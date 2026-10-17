@@ -26,31 +26,11 @@ from ctypes import cdll, c_int, c_char, c_wchar, c_wchar_p, c_char_p, \
                    Structure, Union, POINTER, byref
 
 if sys.platform == "win32":
-    current_dir = os.path.dirname(os.path.abspath(__file__))
     if (sys.version_info.major == 3 and sys.version_info.minor >= 8):
-        try:
-            os.add_dll_directory(os.getcwd())
-        except (FileNotFoundError, OSError):
-            pass
-        try:
-            os.add_dll_directory(current_dir)
-        except (FileNotFoundError, OSError):
-            pass
-        # Path relative to TeamTalk SDK's DLL location (if in SDK layout)
-        sdk_dll_dir = os.path.normpath(os.path.join(current_dir, "..", "TeamTalk_DLL"))
-        if os.path.isdir(sdk_dll_dir):
-            try:
-                os.add_dll_directory(sdk_dll_dir)
-            except (FileNotFoundError, OSError):
-                pass
-    try:
-        dll = cdll.TeamTalk5
-    except OSError:
-        dll_path = os.path.join(current_dir, "TeamTalk5.dll")
-        if os.path.isfile(dll_path):
-            dll = cdll.LoadLibrary(dll_path)
-        else:
-            raise
+        os.add_dll_directory(os.getcwd())
+        # Path relative to TeamTalk SDK's DLL location
+        os.add_dll_directory(os.path.dirname(os.path.abspath(__file__)) + "\\..\\TeamTalk_DLL")
+    dll = cdll.TeamTalk5
     TTCHAR = c_wchar
     TTCHAR_P = c_wchar_p
     from ctypes.wintypes import BOOL

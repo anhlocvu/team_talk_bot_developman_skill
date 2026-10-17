@@ -1,0 +1,2120 @@
+from __future__ import annotations
+import logging
+import os
+import re
+import shutil
+import tempfile
+import threading
+import zipfile
+from typing import List, Optional, TYPE_CHECKING
+from urllib.parse import urlparse
+
+from bot.commands.command import Command
+from bot.player.enums import Mode, State, TrackType
+from bot.TeamTalk.structs import User, UserRight
+from bot import errors, app_vars, utils
+from bot.song_recognizer import song_recognizer, format_duration
+
+if TYPE_CHECKING:
+    from bot.TeamTalk.structs import User
+
+
+class HelpCommand(Command):
+    @property
+    def help(self) -> str:
+        return self.translator.translate("Shows command help")
+
+    def __call__(self, arg: str, user: User) -> Optional[str]:
+        return self.command_processor.help(arg, user)
+
+
+class AboutCommand(Command):
+    @property
+    def help(self) -> str:
+        return self.translator.translate("Shows information about the bot")
+
+    def __call__(self, arg: str, user: User) -> Optional[str]:
+        return app_vars.client_name + "\n" + app_vars.about_text(self.translator)
+
+
+class PlayPauseCommand(Command):
+    @property
+    def help(self) -> str:
+        return self.translator.translate(
+            "[QUERY|URL|PATH] Plays tracks found for a query, URL, or local path. If no query is given, plays or pauses current track. When search results mode (sr) is active, shows a numbered list instead"
+        )
+
+    def __call__(self, arg: str, user: User) -> Optional[str]:
+        if arg:
+            clean_arg = arg.strip().strip('"\'')
+            norm_arg = clean_arg
+            if norm_arg.startswith("www."):
+                norm_arg = "https://" + norm_arg
+
+            parsed = urlparse(norm_arg)
+            is_url = parsed.scheme in ("http", "https", "rtmp", "rtsp")
+            is_local = user.is_admin and os.path.exists(clean_arg)
+
+            if is_url or is_local:
+                self.send_message_async(
+                    self.translator.translate("Loading URL / playlist..."),
+                    user,
+                )
+                try:
+                    target = norm_arg if is_url else clean_arg
+                    tracks = self.module_manager.streamer.get(target, user.is_admin)
+                    if not tracks:
+                        return self.translator.translate("Nothing is found for your query")
+                    self.player.play(tracks)
+                    if len(tracks) > 1:
+                        if self.config.general.send_channel_messages:
+                            self.send_message_async(
+                                self.translator.translate(
+                                    "{nickname} requested playing from a URL ({count} tracks)"
+                                ).format(nickname=user.nickname, count=len(tracks)),
+                                type=2,
+                            )
+                        else:
+                            self.send_message_async(
+                                self.translator.translate(
+                                    "Loaded {count} tracks"
+                                ).format(count=len(tracks)),
+                                user,
+                            )
+                        return self.translator.translate("Playing {}").format(
+                            tracks[0].name
+                        )
+                    else:
+                        if self.config.general.send_channel_messages:
+                            self.send_message_async(
+                                self.translator.translate(
+                                    "{nickname} requested {request}"
+                                ).format(nickname=user.nickname, request=arg),
+                                type=2,
+                            )
+                        return self.translator.translate("Playing {}").format(
+                            tracks[0].name
+                        )
+                except errors.IncorrectProtocolError:
+                    return self.translator.translate("Incorrect protocol")
+                except errors.ServiceError:
+                    return self.translator.translate("Cannot process stream URL")
+                except errors.PathNotFoundError:
+                    return self.translator.translate("The path cannot be found")
+            else:
+                self.send_message_async(
+                    self.translator.translate("Searching..."),
+                    user,
+                )
+                try:
+                    # Search results mode: request more results from the service directly
+                    if self.config.general.search_results_mode:
+                        count = self.command_processor.search_results_count
+                        track_list = self.search_tracks(arg, limit=count)
+                        self.command_processor.pending_search_results[user.id] = track_list
+                        lines = [self.translator.translate("Search results:")]
+                        for i, track in enumerate(track_list):
+                            lines.append(f"{i + 1}: {track.name}")
+                        lines.append(self.translator.translate("Use 'sl NUMBER' to select a track"))
+                        return "\n".join(lines)
+
+                    # Normal mode: request only 1 result and play immediately
+                    track_list = self.search_tracks(arg)
+                    self.player.play(
+                        track_list,
+                        timing_context={
+                            "kind": "search",
+                            "started_at": self._last_search_started_at,
+                            "query": self._last_search_query,
+                        },
+                    )
+                    if self.config.general.send_channel_messages:
+                        self.send_message_async(
+                            self.translator.translate(
+                                "{nickname} requested {request}"
+                            ).format(nickname=user.nickname, request=arg),
+                            type=2,
+                        )
+                    return self.translator.translate("Playing {}").format(
+                        track_list[0].name
+                    )
+                except errors.NothingFoundError:
+                    return self.translator.translate("Nothing is found for your query")
+                except errors.ServiceError:
+                    return self.translator.translate(
+                        "The selected service is currently unavailable"
+                    )
+        else:
+            if self.player.state == State.Playing:
+                self.player.pause()
+            elif self.player.state == State.Paused:
+                self.player.play()
+            elif self.player.state == State.Stopped:
+                return self.translator.translate("Nothing is playing")
+
+
+class StopCommand(Command):
+    @property
+    def help(self) -> str:
+        return self.translator.translate("Stops playback")
+
+    def __call__(self, arg: str, user: User) -> Optional[str]:
+        if self.player.state != State.Stopped:
+            self.player.stop()
+            if self.config.general.send_channel_messages:
+                self.ttclient.send_message(
+                    self.translator.translate("{nickname} stopped playback").format(
+                        nickname=user.nickname
+                    ),
+                    type=2,
+                )
+            else:
+                self.ttclient.send_message(
+                    self.translator.translate("Playback stopped"),
+                    user,
+                )
+        else:
+            return self.translator.translate("Nothing is playing")
+
+
+class VolumeCommand(Command):
+    @property
+    def help(self) -> str:
+        return self.translator.translate(
+            "VOLUME Sets the volume to a value between 0 and {max_volume}. If no volume is specified, the current volume level is displayed"
+        ).format(max_volume=self.config.player.max_volume)
+
+    def __call__(self, arg: str, user: User) -> Optional[str]:
+        if arg:
+            try:
+                volume = int(arg)
+                if 0 <= volume <= self.config.player.max_volume:
+                    self.player.set_volume(int(arg))
+                else:
+                    raise ValueError
+            except ValueError:
+                raise errors.InvalidArgumentError
+        else:
+            return str(self.player.volume)
+
+
+class SeekBackCommand(Command):
+    @property
+    def help(self) -> str:
+        return self.translator.translate(
+            "STEP Seeks current track backward. the default step is {seek_step} seconds"
+        ).format(seek_step=self.config.player.seek_step)
+
+    def __call__(self, arg: str, user: User) -> Optional[str]:
+        if self.player.state == State.Stopped:
+            return self.translator.translate("Nothing is playing")
+        if arg:
+            try:
+                val = abs(float(arg))
+                if val == 0:
+                    raise errors.InvalidArgumentError
+                self.player.seek_back(val)
+            except ValueError:
+                raise errors.InvalidArgumentError
+        else:
+            self.player.seek_back()
+
+
+class SeekForwardCommand(Command):
+    @property
+    def help(self) -> str:
+        return self.translator.translate(
+            "STEP Seeks current track forward. the default step is {seek_step} seconds"
+        ).format(seek_step=self.config.player.seek_step)
+
+    def __call__(self, arg: str, user: User) -> Optional[str]:
+        if self.player.state == State.Stopped:
+            return self.translator.translate("Nothing is playing")
+        if arg:
+            try:
+                val = abs(float(arg))
+                if val == 0:
+                    raise errors.InvalidArgumentError
+                self.player.seek_forward(val)
+            except ValueError:
+                raise errors.InvalidArgumentError
+        else:
+            self.player.seek_forward()
+
+
+class NextTrackCommand(Command):
+    @property
+    def help(self) -> str:
+        return self.translator.translate("[NUMBER|?] Plays next track, jumps to track number, or shows current position with ?")
+
+    def __call__(self, arg: str, user: User) -> Optional[str]:
+        if arg:
+            if arg.strip() == "?":
+                if self.player.state != State.Stopped and self.player.track_list:
+                    current = self.player.track_index + 1
+                    total = len(self.player.track_list)
+                    return f"{current}/{total} - {self.player.track.name}"
+                elif self.player.state != State.Stopped:
+                    return self.translator.translate("Playing {}").format(
+                        self.player.track.name
+                    )
+                else:
+                    return self.translator.translate("Nothing is playing")
+            try:
+                number = int(arg)
+                if number > 0:
+                    index = number - 1
+                elif number < 0:
+                    index = number
+                else:
+                    return self.translator.translate("Incorrect number")
+                self.player.play_by_index(index)
+                return self.translator.translate("Playing {} {}").format(
+                    arg, self.player.track.name
+                )
+            except errors.IncorrectTrackIndexError:
+                return self.translator.translate("Out of list")
+            except errors.NothingIsPlayingError:
+                return self.translator.translate("Nothing is playing")
+            except ValueError:
+                raise errors.InvalidArgumentError
+        else:
+            try:
+                self.player.next()
+                return self.translator.translate("Playing {}").format(
+                    self.player.track.name
+                )
+            except errors.NoNextTrackError:
+                return self.translator.translate("No next track")
+            except errors.NothingIsPlayingError:
+                return self.translator.translate("Nothing is playing")
+
+
+class PreviousTrackCommand(Command):
+    @property
+    def help(self) -> str:
+        return self.translator.translate("Plays previous track")
+
+    def __call__(self, arg: str, user: User) -> Optional[str]:
+        try:
+            self.player.previous()
+            return self.translator.translate("Playing {}").format(
+                self.player.track.name
+            )
+        except errors.NoPreviousTrackError:
+            return self.translator.translate("No previous track")
+        except errors.NothingIsPlayingError:
+            return self.translator.translate("Nothing is playing")
+
+
+class ModeCommand(Command):
+    @property
+    def help(self) -> str:
+        return self.translator.translate(
+            "MODE Sets the playback mode. If no mode is specified, the current mode and a list of modes are displayed"
+        )
+
+    def __call__(self, arg: str, user: User) -> Optional[str]:
+        self.mode_names = {
+            Mode.SingleTrack: self.translator.translate("Single Track"),
+            Mode.RepeatTrack: self.translator.translate("Repeat Track"),
+            Mode.TrackList: self.translator.translate("Track list"),
+            Mode.RepeatTrackList: self.translator.translate("Repeat track list"),
+            Mode.Random: self.translator.translate("Random"),
+        }
+        mode_help = self.translator.translate(
+            "Current mode: {current_mode}\n{modes}"
+        ).format(
+            current_mode=self.mode_names[self.player.mode],
+            modes="\n".join(
+                [
+                    "{value} {name}".format(name=self.mode_names[i], value=i.value)
+                    for i in Mode.__members__.values()
+                ]
+            ),
+        )
+        if arg:
+            try:
+                mode = Mode(arg.lower())
+                if mode == Mode.Random:
+                    self.player.shuffle(True, preserve_current=True)
+                if self.player.mode == Mode.Random and mode != Mode.Random:
+                    self.player.shuffle(False)
+                self.player.mode = Mode(mode)
+                return self.translator.translate("Current mode: {mode}").format(
+                    mode=self.mode_names[self.player.mode]
+                )
+            except ValueError:
+                return self.translator.translate("Incorrect mode") + "\n" + mode_help
+        else:
+            return mode_help
+
+
+class ServiceCommand(Command):
+    @property
+    def help(self) -> str:
+        return self.translator.translate(
+            "SERVICE Selects the service to play from, sv SERVICE h returns additional help. If no service is specified, the current service and a list of available services are displayed"
+        )
+
+    def __call__(self, arg: str, user: User) -> Optional[str]:
+        args = arg.split(" ")
+        if args[0]:
+            service_name = args[0].lower()
+            if service_name not in self.service_manager.services:
+                return self.translator.translate("Unknown service.\n{}").format(
+                    self.service_help
+                )
+            service = self.service_manager.services[service_name]
+            if len(args) == 1:
+                if not service.hidden and service.is_enabled:
+                    self.service_manager.service = service
+                    if service.warning_message:
+                        return self.translator.translate(
+                            "Current service: {}\nWarning: {}"
+                        ).format(service.name, service.warning_message)
+                    return self.translator.translate("Current service: {}").format(
+                        service.name
+                    )
+                elif not service.is_enabled:
+                    if service.error_message:
+                        return self.translator.translate(
+                            "Error: {error}\n{service} is disabled".format(
+                                error=service.error_message,
+                                service=service.name,
+                            )
+                        )
+                    else:
+                        return self.translator.translate(
+                            "{service} is disabled".format(service=service.name)
+                        )
+            elif len(args) >= 1:
+                if service.help:
+                    return service.help
+                else:
+                    return self.translator.translate(
+                        "This service has no additional help"
+                    )
+        else:
+            return self.service_help
+
+    @property
+    def service_help(self):
+        services: List[str] = []
+        for i in self.service_manager.services:
+            service = self.service_manager.services[i]
+            if not service.is_enabled:
+                if service.error_message:
+                    services.append(
+                        "{} (Error: {})".format(service.name, service.error_message)
+                    )
+                else:
+                    services.append(
+                        self.translator.translate("{} (Error)").format(service.name)
+                    )
+            elif service.warning_message:
+                services.append(
+                    self.translator.translate("{} (Warning: {})").format(
+                        service.name, service.warning_message
+                    )
+                )
+            else:
+                services.append(service.name)
+        help = self.translator.translate(
+            "Current service: {current_service}\nAvailable:\n{available_services}\nsend sv SERVICE h for additional help"
+        ).format(
+            current_service=self.service_manager.service.name,
+            available_services="\n".join(services),
+        )
+        return help
+
+
+class SelectTrackCommand(Command):
+    @property
+    def help(self) -> str:
+        return self.translator.translate(
+            "[NUMBER|?] Selects track by number, or shows current position with ?"
+        )
+
+    def __call__(self, arg: str, user: User) -> Optional[str]:
+        if arg:
+            if arg.strip() == "?":
+                if self.player.state != State.Stopped and self.player.track_list:
+                    current = self.player.track_index + 1
+                    total = len(self.player.track_list)
+                    return f"{current}/{total} - {self.player.track.name}"
+                elif self.player.state != State.Stopped:
+                    return self.translator.translate("Playing {}").format(
+                        self.player.track.name
+                    )
+                else:
+                    return self.translator.translate("Nothing is playing")
+            try:
+                number = int(arg)
+                if number > 0:
+                    index = number - 1
+                elif number < 0:
+                    index = number
+                else:
+                    return self.translator.translate("Incorrect number")
+                self.player.play_by_index(index)
+                return self.translator.translate("Playing {} {}").format(
+                    arg, self.player.track.name
+                )
+            except errors.IncorrectTrackIndexError:
+                return self.translator.translate("Out of list")
+            except errors.NothingIsPlayingError:
+                return self.translator.translate("Nothing is playing")
+            except ValueError:
+                raise errors.InvalidArgumentError
+        else:
+            if self.player.state != State.Stopped and self.player.track_list:
+                return f"{self.player.track_index + 1}/{len(self.player.track_list)} - {self.player.track.name}"
+            elif self.player.state != State.Stopped:
+                return self.translator.translate("Playing {} {}").format(
+                    self.player.track_index + 1, self.player.track.name
+                )
+            else:
+                return self.translator.translate("Nothing is playing")
+
+
+class SpeedCommand(Command):
+    @property
+    def help(self) -> str:
+        return self.translator.translate(
+            "SPEED Sets playback speed from 0.25 to 4. If no speed is given, shows current speed"
+        )
+
+    def __call__(self, arg: str, user: User) -> Optional[str]:
+        if not arg:
+            return self.translator.translate("Current rate: {}").format(
+                str(self.player.get_speed())
+            )
+        else:
+            try:
+                self.player.set_speed(float(arg))
+            except ValueError:
+                raise errors.InvalidArgumentError()
+
+
+class PitchCommand(Command):
+    @property
+    def help(self) -> str:
+        return self.translator.translate(
+            "SEMITONES Sets playback pitch from -12 to 12 semitones. If no pitch is given, shows current pitch"
+        )
+
+    def __call__(self, arg: str, user: User) -> Optional[str]:
+        if not arg:
+            return self.translator.translate("Current pitch: {}").format(
+                str(self.player.get_pitch())
+            )
+        else:
+            try:
+                self.player.set_pitch(float(arg))
+            except ValueError:
+                raise errors.InvalidArgumentError()
+
+
+class FavoritesCommand(Command):
+    @property
+    def help(self) -> str:
+        return self.translator.translate(
+            "+/-NUMBER Manages favorite tracks. + adds the current track to favorites. - removes a track requested from favorites. If a number is specified after +/-, adds/removes a track with that number"
+        )
+
+    def __call__(self, arg: str, user: User) -> Optional[str]:
+        if user.username == "":
+            return self.translator.translate(
+                "This command is not available for guest users"
+            )
+        if arg:
+            if arg[0] == "+":
+                return self._add(user)
+            elif arg[0] == "-":
+                return self._del(arg, user)
+            else:
+                return self._play(arg, user)
+        else:
+            return self._list(user)
+
+    def _add(self, user: User) -> str:
+        if self.player.state != State.Stopped:
+            if user.username in self.cache.favorites:
+                self.cache.favorites[user.username].append(self.player.track.get_raw())
+            else:
+                self.cache.favorites[user.username] = [self.player.track.get_raw()]
+            self.cache_manager.save()
+            return self.translator.translate("Added")
+        else:
+            return self.translator.translate("Nothing is playing")
+
+    def _del(self, arg: str, user: User) -> str:
+        if (self.player.state != State.Stopped and len(arg) == 1) or len(arg) > 1:
+            try:
+                if len(arg) == 1:
+                    self.cache.favorites[user.username].remove(self.player.track)
+                else:
+                    del self.cache.favorites[user.username][int(arg[1::]) - 1]
+                self.cache_manager.save()
+                return self.translator.translate("Deleted")
+            except IndexError:
+                return self.translator.translate("Out of list")
+            except ValueError:
+                if not arg[1::].isdigit:
+                    return self.help
+                return self.translator.translate("This track is not in favorites")
+        else:
+            return self.translator.translate("Nothing is playing")
+
+    def _list(self, user: User) -> str:
+        track_names: List[str] = []
+        try:
+            for number, track in enumerate(self.cache.favorites[user.username]):
+                track_names.append(
+                    self.translator.translate("{number}: {track_name}").format(
+                        number=number + 1,
+                        track_name=track.name if track.name else track.url,
+                    )
+                )
+        except KeyError:
+            pass
+        if len(track_names) > 0:
+            return "\n".join(track_names)
+        else:
+            return self.translator.translate("The list is empty")
+
+    def _play(self, arg: str, user: User) -> Optional[str]:
+        try:
+            self.player.play(
+                self.cache.favorites[user.username], start_track_index=int(arg) - 1
+            )
+        except ValueError:
+            raise errors.InvalidArgumentError()
+        except IndexError:
+            return self.translator.translate("Out of list")
+        except KeyError:
+            return self.translator.translate("The list is empty")
+
+
+class GetLinkCommand(Command):
+    @property
+    def help(self) -> str:
+        return self.translator.translate("Gets a direct link to the current track")
+
+    def __call__(self, arg: str, user: User) -> Optional[str]:
+        if self.player.state != State.Stopped:
+            url = self.player.track.url
+            if url:
+                shortener = self.module_manager.shortener
+                return shortener.get(url) if shortener else url
+            else:
+                return self.translator.translate("URL is not available")
+        else:
+            return self.translator.translate("Nothing is playing")
+
+
+class YouTubeLinkCommand(Command):
+    @property
+    def help(self) -> str:
+        return self.translator.translate("Gets the original YouTube link to the current track")
+
+    def _get_youtube_url(self, track: Track) -> Optional[str]:
+        raw = track.get_raw() if hasattr(track, "get_raw") else track
+        for t in (raw, track):
+            u = getattr(t, "_url", "") or getattr(t, "url", "")
+            if any(h in u for h in ("youtube.com/watch", "youtu.be/", "music.youtube.com/watch")):
+                return u
+        for t in (raw, track):
+            info = getattr(t, "extra_info", None) or {}
+            for key in ("webpage_url", "original_url"):
+                url = info.get(key)
+                if url and any(h in url for h in ("youtube.com", "youtu.be")):
+                    return url
+            vid = info.get("videoId") or info.get("id") or info.get("contentId")
+            if vid and isinstance(vid, str) and len(vid) == 11:
+                return f"https://www.youtube.com/watch?v={vid}"
+        return None
+
+    def __call__(self, arg: str, user: User) -> Optional[str]:
+        if self.player.state != State.Stopped:
+            yt_url = self._get_youtube_url(self.player.track)
+            if yt_url:
+                shortener = self.module_manager.shortener
+                return shortener.get(yt_url) if shortener else yt_url
+            else:
+                return self.translator.translate("Current track is not from YouTube")
+        else:
+            return self.translator.translate("Nothing is playing")
+
+
+class RecentsCommand(Command):
+    @property
+    def help(self) -> str:
+        return self.translator.translate(
+            "NUMBER Plays a track with  the given number from a list of recent tracks. Without a number shows recent tracks"
+        )
+
+    def __call__(self, arg: str, user: User) -> Optional[str]:
+        if arg:
+            try:
+                self.player.play(
+                    list(reversed(list(self.cache.recents))),
+                    start_track_index=int(arg) - 1,
+                )
+            except ValueError:
+                raise errors.InvalidArgumentError()
+            except IndexError:
+                return self.translator.translate("Out of list")
+        else:
+            track_names: List[str] = []
+            for number, track in enumerate(reversed(self.cache.recents)):
+                if track.name:
+                    track_names.append(
+                        self.translator.translate("{number}: {track_name}").format(
+                            number=number + 1, track_name=track.name
+                        )
+                    )
+                else:
+                    track_names.append(
+                        self.translator.translate("{number}: {track_url}").format(
+                            number=number + 1, track_url=track.url
+                        )
+                    )
+            return (
+                "\n".join(track_names)
+                if track_names
+                else self.translator.translate("The list is empty")
+            )
+
+
+class DownloadCommand(Command):
+    @property
+    def help(self) -> str:
+        return self.translator.translate(
+            "Downloads the current track and uploads it to the channel."
+        )
+
+    def __call__(self, arg: str, user: User) -> Optional[str]:
+        if self.player.state != State.Stopped:
+            track = self.player.track
+            if track.url and (
+                track.type == TrackType.Default or track.type == TrackType.Local
+            ):
+                self.module_manager.uploader(self.player.track, user)
+                return self.translator.translate("Downloading...")
+            else:
+                return self.translator.translate("Live streams cannot be downloaded")
+        else:
+            return self.translator.translate("Nothing is playing")
+
+
+class DownloadVideoCommand(Command):
+    @property
+    def help(self) -> str:
+        return self.translator.translate(
+            "Downloads the current track as video and uploads it to the channel."
+        )
+
+    def __call__(self, arg: str, user: User) -> Optional[str]:
+        if self.player.state != State.Stopped:
+            track = self.player.track
+            if track.url and (
+                track.type == TrackType.Default or track.type == TrackType.Local
+            ):
+                self.module_manager.uploader(self.player.track, user, video=True)
+                return self.translator.translate("Downloading video...")
+            else:
+                return self.translator.translate("Live streams cannot be downloaded")
+        else:
+            return self.translator.translate("Nothing is playing")
+
+
+class JoinChannelCommand(Command):
+    @property
+    def help(self) -> str:
+        return self.translator.translate("Makes the bot join your current channel")
+
+    def __call__(self, arg: str, user: User) -> Optional[str]:
+        if self.player.state != State.Stopped:
+            self.player.stop()
+
+        user_channel = user.channel
+
+        try:
+            cmd = self.ttclient.move_user(self.ttclient.user.id, user_channel.id)
+
+            import time
+            from bot import app_vars
+            from queue import Empty
+
+            start_time = time.time()
+            while time.time() - start_time < 5:
+                try:
+                    event = self.ttclient.event_success_queue.get_nowait()
+                    if event.source == cmd:
+                        self._bot.jc_requested_by_user_id = user.id
+                        return self.translator.translate("Joining channel: {}").format(user_channel.name)
+                    else:
+                        self.ttclient.event_success_queue.put(event)
+                except Empty:
+                    pass
+
+                try:
+                    error = self.ttclient.errors_queue.get_nowait()
+                    if error.command_id == cmd:
+                        return self.translator.translate("Failed to join channel. Error: {}").format(error.message)
+                    else:
+                        self.ttclient.errors_queue.put(error)
+                except Empty:
+                    pass
+                time.sleep(app_vars.loop_timeout)
+
+            self._bot.jc_requested_by_user_id = user.id
+            return self.translator.translate("Joining channel: {}").format(user_channel.name)
+
+        except Exception as e:
+            return self.translator.translate("Failed to join channel: {}").format(str(e))
+
+
+class DownloadPlaylistCommand(Command):
+    @property
+    def help(self) -> str:
+        return self.translator.translate(
+            "Downloads all tracks from a playlist/album URL, zips them, and uploads to the channel."
+        )
+
+    def __call__(self, arg: str, user: User) -> Optional[str]:
+        if not arg:
+            # Check if there's an active download for this user
+            status = self.module_manager.playlist_uploader.get_status(user.id)
+            if status:
+                return self.translator.translate("Current progress: {}").format(status)
+            
+            # Set state to wait for link from this user
+            self.command_processor.pending_playlist_download[user.id] = True
+            return self.translator.translate("Please send the link to the playlist or album.")
+
+        self.run_async(self._process, arg, user)
+        return self.translator.translate("Searching...")
+
+    def _process(self, arg: str, user: User):
+        try:
+            tracks = self.module_manager.streamer.get(arg, user.is_admin)
+            
+            if not tracks:
+                self.ttclient.send_message(
+                    self.translator.translate("Nothing is found for your query"),
+                    user
+                )
+                return
+
+            if len(tracks) == 1 and not (arg.startswith("http") and ("playlist" in arg or "album" in arg or "list=" in arg or "channel" in arg or "/@" in arg or "/c/" in arg or "/user/" in arg)):
+                # If it's just a single track and not explicitly a playlist/album/channel link
+                self.ttclient.send_message(
+                    self.translator.translate("This command is for playlists, albums, and channels. For single tracks, use 'dl'."),
+                    user
+                )
+                return
+
+            # Try to get playlist title and artist with more aggressive detection
+            playlist_name = "Playlist"
+            artist_name = ""
+            is_official_album = arg.startswith("http") and "list=OLAK" in arg
+            found_album_metadata = False
+            
+            try:
+                # 1. Look for metadata in ALL tracks
+                for t in tracks:
+                    info = t.extra_info if t.extra_info else {}
+                    
+                    # Try to find playlist/album title
+                    if not found_album_metadata or playlist_name == "Playlist":
+                        if "album" in info and info["album"]:
+                            playlist_name = info["album"]
+                            found_album_metadata = True
+                        elif "playlist_title" in info and info["playlist_title"]:
+                            playlist_name = info["playlist_title"]
+                        elif "playlist" in info and info["playlist"]:
+                            playlist_name = info["playlist"]
+                    
+                    # Try to find artist name
+                    if not artist_name:
+                        artist_name = info.get("artist") or info.get("album_artist") or info.get("uploader") or info.get("playlist_uploader")
+                    
+                    # If we have a playlist title and it's not an official album, 
+                    # we don't need to look further for artist unless we want to be sure
+                    if found_album_metadata and artist_name and is_official_album:
+                        break
+
+                # 2. Cleanup: If playlist_name still starts with "Album - ", clean it
+                if playlist_name.startswith("Album - "):
+                    playlist_name = playlist_name.replace("Album - ", "", 1)
+                    found_album_metadata = True
+
+            except Exception as e:
+                logging.error(f"Error extracting playlist metadata: {e}")
+                pass
+
+            # Final naming logic
+            final_zip_name = playlist_name
+            
+            # RULE: Only add artist if it is an official album (OLAK) 
+            # OR if metadata explicitly identified it as an album and we have an artist
+            if (is_official_album or (found_album_metadata and "album" in arg.lower())) and artist_name:
+                if artist_name.lower() not in playlist_name.lower():
+                    final_zip_name = f"{playlist_name} - {artist_name}"
+
+            logging.info(f"PlaylistUploader determined name: {final_zip_name} (Official Album: {is_official_album})")
+            self.module_manager.playlist_uploader(tracks, user, final_zip_name)
+        except errors.ServiceError as e:
+            self.ttclient.send_message(
+                self.translator.translate("Error: {}").format(str(e)),
+                user
+            )
+        except Exception as e:
+            logging.error(f"DLP Error: {e}", exc_info=True)
+            self.ttclient.send_message(
+                self.translator.translate("Error: {}").format(str(e)),
+                user
+            )
+
+# ===========================================================================
+# COMANDOS DE FILA
+# ===========================================================================
+
+class QueueAddCommand(Command):
+    @property
+    def help(self) -> str:
+        return self.translator.translate(
+            "QUERY Searches for a track and adds it to the queue. If nothing is playing, starts immediately"
+        )
+
+    def __call__(self, arg: str, user: User) -> Optional[str]:
+        if not arg:
+            raise errors.InvalidArgumentError()
+
+        clean_arg = arg.strip().strip('"\'')
+        norm_arg = clean_arg
+        if norm_arg.startswith("www."):
+            norm_arg = "https://" + norm_arg
+
+        parsed = urlparse(norm_arg)
+        is_url = parsed.scheme in ("http", "https", "rtmp", "rtsp")
+        is_local = user.is_admin and os.path.exists(clean_arg)
+
+        if is_url or is_local:
+            target = norm_arg if is_url else clean_arg
+            try:
+                tracks = self.module_manager.streamer.get(target, user.is_admin)
+                if not tracks:
+                    return self.translator.translate("Nothing is found for your query")
+            except Exception as e:
+                return self.translator.translate("Error: {}").format(str(e))
+
+            if self.player.state == State.Stopped:
+                self.run_async(self.player.play, tracks)
+                return self.translator.translate("Playing {}").format(tracks[0].name)
+            else:
+                last_pos = 1
+                for t in tracks:
+                    last_pos = self.player.queue.add(t)
+                if len(tracks) == 1:
+                    if self.config.general.send_channel_messages:
+                        self.run_async(
+                            self.ttclient.send_message,
+                            self.translator.translate(
+                                "{nickname} added to queue: {track}"
+                            ).format(nickname=user.nickname, track=tracks[0].name),
+                            type=2,
+                        )
+                    return self.translator.translate(
+                        "Added to queue [{position}]: {track}"
+                    ).format(position=last_pos, track=tracks[0].name)
+                else:
+                    return self.translator.translate("Added {count} tracks to queue").format(count=len(tracks))
+        else:
+            self.run_async(
+                self.ttclient.send_message,
+                self.translator.translate("Searching..."),
+                user,
+            )
+
+            try:
+                track_list = self.search_tracks(arg)
+            except errors.NothingFoundError:
+                return self.translator.translate("Nothing is found for your query")
+            except errors.ServiceError:
+                return self.translator.translate(
+                    "The selected service is currently unavailable"
+                )
+
+            track = track_list[0]
+
+            # Se nada está tocando, inicia imediatamente
+            if self.player.state == State.Stopped:
+                self.run_async(
+                    self.player.play,
+                    [track],
+                    timing_context={
+                        "kind": "search",
+                        "started_at": self._last_search_started_at,
+                        "query": self._last_search_query,
+                    },
+                )
+                return self.translator.translate("Playing {}").format(track.name)
+
+            # Caso contrário, enfileira
+            position = self.player.queue.add(track)
+
+            if self.config.general.send_channel_messages:
+                self.run_async(
+                    self.ttclient.send_message,
+                    self.translator.translate(
+                        "{nickname} added to queue: {track}"
+                    ).format(nickname=user.nickname, track=track.name),
+                    type=2,
+                )
+
+            return self.translator.translate(
+                "Added to queue [{position}]: {track}"
+            ).format(position=position, track=track.name)
+
+
+class QueueListCommand(Command):
+    @property
+    def help(self) -> str:
+        return self.translator.translate("Lists all tracks in the queue")
+
+    def __call__(self, arg: str, user: User) -> Optional[str]:
+        tracks = self.player.queue.list_tracks()
+
+        if not tracks:
+            return self.translator.translate("The queue is empty")
+
+        lines: List[str] = []
+        for i, track in enumerate(tracks):
+            name = track.name if track.name else track._url
+            lines.append(f"{i + 1}: {name}")
+
+        header = self.translator.translate(
+            "Queue ({count} track(s)):"
+        ).format(count=len(tracks))
+
+        return header + "\n" + "\n".join(lines)
+
+
+class QueueRemoveCommand(Command):
+    @property
+    def help(self) -> str:
+        return self.translator.translate(
+            "NUMBER Removes track number NUMBER from the queue"
+        )
+
+    def __call__(self, arg: str, user: User) -> Optional[str]:
+        if not arg:
+            raise errors.InvalidArgumentError()
+
+        try:
+            number = int(arg)
+        except ValueError:
+            raise errors.InvalidArgumentError()
+
+        if number < 1:
+            raise errors.InvalidArgumentError()
+
+        index = number - 1
+        tracks = self.player.queue.list_tracks()
+
+        if index >= len(tracks):
+            return self.translator.translate("Out of list")
+
+        track_name = tracks[index].name if tracks[index].name else tracks[index]._url
+        self.player.queue.remove(index)
+
+        return self.translator.translate(
+            "Removed from queue: {track}"
+        ).format(track=track_name)
+
+
+class QueueClearCommand(Command):
+    @property
+    def help(self) -> str:
+        return self.translator.translate("Clears the entire queue")
+
+    def __call__(self, arg: str, user: User) -> Optional[str]:
+        if self.player.queue.is_empty:
+            return self.translator.translate("The queue is already empty")
+
+        self.player.queue.clear()
+        return self.translator.translate("Queue cleared")
+
+
+class QueueSkipCommand(Command):
+    @property
+    def help(self) -> str:
+        return self.translator.translate(
+            "Skips current track and plays the next one from the queue. Falls back to normal next if queue is empty"
+        )
+
+    def __call__(self, arg: str, user: User) -> Optional[str]:
+        if self.player.state == State.Stopped:
+            return self.translator.translate("Nothing is playing")
+
+        # Tenta a fila primeiro
+        if not self.player.queue.is_empty:
+            next_track_name = self.player.queue.peek_next().name
+            self.run_async(self.player.play_from_queue)
+            return self.translator.translate("Playing next from queue: {}").format(
+                next_track_name
+            )
+
+        # Fila vazia — comportamento normal de 'n'
+        try:
+            self.player.next()
+            return self.translator.translate("Playing {}").format(
+                self.player.track.name
+            )
+        except errors.NoNextTrackError:
+            return self.translator.translate("No next track")
+
+
+# ===========================================================================
+# MODO DE RESULTADOS DE BUSCA
+# ===========================================================================
+
+class SearchResultsCommand(Command):
+    """sr — toggle do modo de resultados de busca (salvo no config.json via 'sc')."""
+
+    @property
+    def help(self) -> str:
+        return self.translator.translate(
+            "Toggles search results mode. When active, 'p QUERY' shows a numbered list. Use 'sr on' or 'sr off' to set explicitly. Save permanently with 'sc'"
+        )
+
+    def __call__(self, arg: str, user: User) -> Optional[str]:
+        arg = arg.strip().lower()
+
+        if arg in ("on", "1", "yes", "true"):
+            self.config.general.search_results_mode = True
+            return self.translator.translate("Search results mode: ON")
+
+        elif arg in ("off", "0", "no", "false"):
+            self.config.general.search_results_mode = False
+            return self.translator.translate("Search results mode: OFF")
+
+        elif arg == "":
+            # Toggle
+            self.config.general.search_results_mode = not self.config.general.search_results_mode
+            if self.config.general.search_results_mode:
+                return self.translator.translate("Search results mode: ON")
+            else:
+                return self.translator.translate("Search results mode: OFF")
+
+        else:
+            raise errors.InvalidArgumentError
+
+
+class SelectSearchResultCommand(Command):
+    """sl NUMBER — seleciona e toca o resultado N da última busca (volátil por usuário)."""
+
+    @property
+    def help(self) -> str:
+        return self.translator.translate(
+            "NUMBER Selects and plays result NUMBER from the last search list (requires search results mode to be active)"
+        )
+
+    def __call__(self, arg: str, user: User) -> Optional[str]:
+        if not arg:
+            raise errors.InvalidArgumentError
+
+        try:
+            number = int(arg.strip())
+        except ValueError:
+            raise errors.InvalidArgumentError
+
+        if number < 1:
+            raise errors.InvalidArgumentError
+
+        results = self.command_processor.pending_search_results.get(user.id)
+
+        if not results:
+            return self.translator.translate(
+                "No search results available. Use 'p QUERY' to search first"
+            )
+
+        if number > len(results):
+            return self.translator.translate("Out of list")
+
+        track = results[number - 1]
+        # Clear pending results after selection
+        del self.command_processor.pending_search_results[user.id]
+
+        if self.config.general.send_channel_messages:
+            self.run_async(
+                self.ttclient.send_message,
+                self.translator.translate(
+                    "{nickname} selected: {track}"
+                ).format(nickname=user.nickname, track=track.name),
+                type=2,
+            )
+
+        self.run_async(self.player.play, [track])
+        return self.translator.translate("Playing {}").format(track.name)
+
+
+class SearchResultsCountCommand(Command):
+    """slc NUMBER — configura quantidade de resultados exibidos (volátil, padrão 1)."""
+
+    _MIN = 1
+
+    @property
+    def help(self) -> str:
+        return self.translator.translate(
+            "NUMBER Sets how many results are shown when search results mode is active. Without a number shows current count. Resets to 1 on restart"
+        )
+
+    def __call__(self, arg: str, user: User) -> Optional[str]:
+        if not arg:
+            return self.translator.translate(
+                "Search results count: {count}"
+            ).format(count=self.command_processor.search_results_count)
+
+        try:
+            count = int(arg.strip())
+        except ValueError:
+            raise errors.InvalidArgumentError
+
+        if count < self._MIN:
+            return self.translator.translate(
+                "Invalid count. Please enter a number greater than 0"
+            )
+
+        self.command_processor.search_results_count = count
+        return self.translator.translate(
+            "Search results count set to {count}"
+        ).format(count=count)
+
+
+class AddLinkCommand(Command):
+    @property
+    def help(self) -> str:
+        return self.translator.translate(
+            "LINK Adds a link to the download list."
+        )
+
+    def __call__(self, arg: str, user: User) -> Optional[str]:
+        if not arg:
+            raise errors.InvalidArgumentError()
+
+        link = arg.strip()
+        if user.id not in self.command_processor.download_links:
+            self.command_processor.download_links[user.id] = []
+
+        self.command_processor.download_links[user.id].append(link)
+        return self.translator.translate("Added link to the list. Total: {count}").format(
+            count=len(self.command_processor.download_links[user.id])
+        )
+
+
+class AddMultipleLinksCommand(Command):
+    @property
+    def help(self) -> str:
+        return self.translator.translate(
+            "LINK1 LINK2 ... Adds multiple space-separated links to the download list."
+        )
+
+    def __call__(self, arg: str, user: User) -> Optional[str]:
+        if not arg:
+            raise errors.InvalidArgumentError()
+
+        links = [l.strip() for l in arg.split(" ") if l.strip()]
+        if not links:
+            raise errors.InvalidArgumentError()
+
+        if user.id not in self.command_processor.download_links:
+            self.command_processor.download_links[user.id] = []
+
+        self.command_processor.download_links[user.id].extend(links)
+        return self.translator.translate("Added {added_count} links. Total list size: {count}").format(
+            added_count=len(links),
+            count=len(self.command_processor.download_links[user.id])
+        )
+
+
+class ListLinksCommand(Command):
+    @property
+    def help(self) -> str:
+        return self.translator.translate(
+            "Lists all links in the download list."
+        )
+
+    def __call__(self, arg: str, user: User) -> Optional[str]:
+        links = self.command_processor.download_links.get(user.id, [])
+        if not links:
+            return self.translator.translate("The list is empty")
+
+        lines = []
+        for i, link in enumerate(links):
+            lines.append(f"{i + 1}: {link}")
+
+        return "\n".join(lines)
+
+
+class RemoveLinkCommand(Command):
+    @property
+    def help(self) -> str:
+        return self.translator.translate(
+            "NUMBER_OR_LINK Removes a link from the download list by its index or URL."
+        )
+
+    def __call__(self, arg: str, user: User) -> Optional[str]:
+        if not arg:
+            raise errors.InvalidArgumentError()
+
+        links = self.command_processor.download_links.get(user.id, [])
+        if not links:
+            return self.translator.translate("The list is empty")
+
+        removed_link = None
+        # Try to parse index
+        try:
+            index = int(arg.strip())
+            if index < 1 or index > len(links):
+                return self.translator.translate("Out of list")
+            removed_link = links.pop(index - 1)
+        except ValueError:
+            # Match by URL string
+            target = arg.strip()
+            if target in links:
+                links.remove(target)
+                removed_link = target
+            else:
+                return self.translator.translate("Link not found in the list")
+
+        return self.translator.translate("Removed link: {link}").format(link=removed_link)
+
+
+class DownloadDirectCommand(Command):
+    @property
+    def help(self) -> str:
+        return self.translator.translate(
+            "LINK Downloads a link directly and uploads it to the channel."
+        )
+
+    def __call__(self, arg: str, user: User) -> Optional[str]:
+        if not arg:
+            raise errors.InvalidArgumentError()
+
+        self.run_async(self._process, arg, user)
+        return self.translator.translate("Searching and downloading...")
+
+    def _process(self, arg: str, user: User) -> None:
+        try:
+            tracks = self.module_manager.streamer.get(arg, user.is_admin)
+            if not tracks:
+                self.ttclient.send_message(
+                    self.translator.translate("Nothing is found for your query"),
+                    user
+                )
+                return
+
+            self.module_manager.uploader.run(tracks[0], user)
+        except Exception as e:
+            self.ttclient.send_message(
+                self.translator.translate("Error: {}").format(str(e)),
+                user
+            )
+
+
+class DownloadListCommand(Command):
+    @property
+    def help(self) -> str:
+        return self.translator.translate(
+            "Downloads all links in your list and uploads them to the channel. Can download normally or as a ZIP archive."
+        )
+
+    def __call__(self, arg: str, user: User) -> Optional[str]:
+        links = self.command_processor.download_links.get(user.id, [])
+        if not links:
+            return self.translator.translate("The list is empty")
+
+        arg = arg.strip()
+        if not arg:
+            self.command_processor.pending_ads_option[user.id] = True
+            return self.translator.translate(
+                "How do you want to download these links?\n"
+                "1. Download individually (Normal)\n"
+                "2. Compress all into a ZIP file\n"
+                "Respond only with 1 or 2."
+            )
+
+        if arg == "1":
+            links_copy = list(links)
+            self.command_processor.download_links[user.id] = []
+            if self.command_processor.adsc_enabled:
+                self.run_async(self._process_normal_local, links_copy, user)
+                return self.translator.translate("Starting local download of {count} links...").format(count=len(links_copy))
+            else:
+                self.run_async(self._process_normal, links_copy, user)
+                return self.translator.translate("Starting download of {count} links...").format(count=len(links_copy))
+        elif arg == "2":
+            links_copy = list(links)
+            self.command_processor.download_links[user.id] = []
+            if self.command_processor.adsc_enabled:
+                self.run_async(self._process_zip_local, links_copy, user)
+                return self.translator.translate("Resolving and zipping locally {count} links...").format(count=len(links_copy))
+            else:
+                self.run_async(self._process_zip, links_copy, user)
+                return self.translator.translate("Resolving and zipping {count} links...").format(count=len(links_copy))
+        else:
+            return self.translator.translate("Invalid option. Please send 'ads' again to select.")
+
+    def _process_normal(self, links: List[str], user: User) -> None:
+        for i, link in enumerate(links):
+            try:
+                self.ttclient.send_message(
+                    self.translator.translate("Processing link {number}/{total}: {link}").format(
+                        number=i + 1, total=len(links), link=link
+                    ),
+                    user
+                )
+                tracks = self.module_manager.streamer.get(link, user.is_admin)
+                if not tracks:
+                    self.ttclient.send_message(
+                        self.translator.translate("Nothing is found for: {link}").format(link=link),
+                        user
+                    )
+                    continue
+
+                self.module_manager.uploader.run(tracks[0], user)
+            except Exception as e:
+                self.ttclient.send_message(
+                    self.translator.translate("Error downloading {link}: {error}").format(
+                        link=link, error=str(e)
+                    ),
+                    user
+                )
+
+    def _process_normal_local(self, links: List[str], user: User) -> None:
+        error_count = 0
+        dest_dir = app_vars.music_downloads_dir
+        try:
+            os.makedirs(dest_dir, exist_ok=True)
+        except Exception as e:
+            logging.error(f"Failed to create directory {dest_dir}: {e}")
+            self.ttclient.send_message(
+                self.translator.translate("Error: {}").format(str(e)),
+                user
+            )
+            return
+
+        for i, link in enumerate(links):
+            try:
+                self.ttclient.send_message(
+                    self.translator.translate("Processing link {number}/{total}: {link}").format(
+                        number=i + 1, total=len(links), link=link
+                    ),
+                    user
+                )
+                tracks = self.module_manager.streamer.get(link, user.is_admin)
+                if not tracks:
+                    self.ttclient.send_message(
+                        self.translator.translate("Nothing is found for: {link}").format(link=link),
+                        user
+                    )
+                    error_count += 1
+                    continue
+
+                track = tracks[0]
+                try:
+                    if track.type == TrackType.Dynamic:
+                        track.url
+                    downloaded_path = track.download(dest_dir)
+                    target_format = getattr(self.config.general, "download_audio_format", "default")
+                    target_rate = getattr(self.config.general, "sampling_rate", "default")
+                    target_bitrate = getattr(self.config.general, "mp3_bitrate", "320k")
+                    downloaded_path = utils.convert_audio(downloaded_path, target_format, target_rate, target_bitrate)
+                except Exception as download_err:
+                    logging.error(f"Local download failed for track {track.name}: {download_err}")
+                    error_count += 1
+            except Exception as e:
+                logging.error(f"Error processing link {link}: {e}")
+                error_count += 1
+
+        if error_count == 0:
+            self.ttclient.send_message(
+                self.translator.translate("All downloads completed successfully!"),
+                user
+            )
+        else:
+            self.ttclient.send_message(
+                self.translator.translate("Downloads completed with {error_count} error(s).").format(
+                    error_count=error_count
+                ),
+                user
+            )
+
+    def _process_zip(self, links: List[str], user: User) -> None:
+        try:
+            self.ttclient.send_message(
+                self.translator.translate("Resolving links..."),
+                user
+            )
+            tracks = []
+            for link in links:
+                try:
+                    resolved = self.module_manager.streamer.get(link, user.is_admin)
+                    if resolved:
+                        tracks.append(resolved[0])
+                except Exception as e:
+                    logging.error(f"ADS ZIP: Failed to resolve {link}: {e}")
+
+            if not tracks:
+                self.ttclient.send_message(
+                    self.translator.translate("Error: No valid tracks found to download."),
+                    user
+                )
+                return
+
+            self.module_manager.playlist_uploader(tracks, user, "Compressed Links")
+        except Exception as e:
+            self.ttclient.send_message(
+                self.translator.translate("Error: {}").format(str(e)),
+                user
+            )
+
+    def _process_zip_local(self, links: List[str], user: User) -> None:
+        error_count = 0
+        try:
+            self.ttclient.send_message(
+                self.translator.translate("Resolving links..."),
+                user
+            )
+            tracks = []
+            for link in links:
+                try:
+                    resolved = self.module_manager.streamer.get(link, user.is_admin)
+                    if resolved:
+                        tracks.append(resolved[0])
+                    else:
+                        error_count += 1
+                except Exception as e:
+                    logging.error(f"ADSC ZIP: Failed to resolve {link}: {e}")
+                    error_count += 1
+
+            if not tracks:
+                self.ttclient.send_message(
+                    self.translator.translate("Error: No valid tracks found to download."),
+                    user
+                )
+                return
+
+            temp_dir = tempfile.TemporaryDirectory(dir=app_vars.temp_dir)
+            downloaded_files = []
+
+            for i, track in enumerate(tracks):
+                try:
+                    if track.type == TrackType.Dynamic:
+                        track.url
+                    file_path = track.download(temp_dir.name)
+                    target_format = getattr(self.config.general, "download_audio_format", "default")
+                    target_rate = getattr(self.config.general, "sampling_rate", "default")
+                    target_bitrate = getattr(self.config.general, "mp3_bitrate", "320k")
+                    file_path = utils.convert_audio(file_path, target_format, target_rate, target_bitrate)
+                    downloaded_files.append(file_path)
+                except Exception as e:
+                    logging.error(f"ADSC ZIP: Failed to download track {track.name}: {e}")
+                    error_count += 1
+
+            if not downloaded_files:
+                self.ttclient.send_message(
+                    self.translator.translate("Error: Failed to download any tracks from this playlist."),
+                    user
+                )
+                temp_dir.cleanup()
+                return
+
+            dest_dir = app_vars.zip_downloads_dir
+            os.makedirs(dest_dir, exist_ok=True)
+
+            folder_name = "Compressed_Links"
+            zip_filename = folder_name + ".zip"
+            zip_path = os.path.join(dest_dir, zip_filename)
+
+            counter = 1
+            while os.path.exists(zip_path):
+                zip_filename = f"{folder_name}_{counter}.zip"
+                zip_path = os.path.join(dest_dir, zip_filename)
+                counter += 1
+
+            with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+                for file in downloaded_files:
+                    arcname = os.path.join(folder_name, os.path.basename(file))
+                    zipf.write(file, arcname)
+
+            temp_dir.cleanup()
+
+        except Exception as e:
+            logging.error(f"ADSC ZIP processing error: {e}", exc_info=True)
+            self.ttclient.send_message(
+                self.translator.translate("Error: {}").format(str(e)),
+                user
+            )
+            return
+
+        if error_count == 0:
+            self.ttclient.send_message(
+                self.translator.translate("All downloads completed successfully!"),
+                user
+            )
+        else:
+            self.ttclient.send_message(
+                self.translator.translate("Downloads completed with {error_count} error(s).").format(
+                    error_count=error_count
+                ),
+                user
+            )
+
+
+class ToggleLocalDownloadCommand(Command):
+    @property
+    def help(self) -> str:
+        return self.translator.translate(
+            "Toggles local download mode for the 'ads' command. When active, files are saved locally to the VPS instead of uploaded to TeamTalk."
+        )
+
+    def __call__(self, arg: str, user: User) -> Optional[str]:
+        self.command_processor.adsc_enabled = not self.command_processor.adsc_enabled
+        if self.command_processor.adsc_enabled:
+            return self.translator.translate("Local download mode (adsc) enabled.")
+        else:
+            return self.translator.translate("Local download mode (adsc) disabled.")
+
+
+class TrimSilenceCommand(Command):
+    @property
+    def help(self) -> str:
+        return self.translator.translate(
+            "Toggles silence trimming mode. When active, automatically removes leading and trailing silence from tracks."
+        )
+
+    def __call__(self, arg: str, user: User) -> Optional[str]:
+        new_state = not self.player.silence_trim
+        self.player.set_silence_trim(new_state)
+        if new_state:
+            return self.translator.translate("Silence trimming (ts) enabled.")
+        else:
+            return self.translator.translate("Silence trimming (ts) disabled.")
+
+
+class WhatSongCommand(Command):
+    @property
+    def help(self) -> str:
+        return self.translator.translate(
+            "[-s] Identifies the currently playing song in a mix or compilation using YouTube Chapters, Shazam, or Google Voice AI. Use 'ws -s' to force audio/voice recognition."
+        )
+
+    def _process_audio_identify(self, user: User) -> None:
+        try:
+            result = song_recognizer.identify(self.player, force_audio=True)
+            if not result:
+                self.ttclient.send_message(
+                    self.translator.translate(
+                        "Could not identify the song. If this is a song with lyrics, please try again when the vocals/lyrics are clearly heard."
+                    ),
+                    user,
+                )
+                return
+
+            current_pos = float(getattr(self.player._player, "time_pos", 0.0) or 0.0)
+            duration = float(self.player.get_duration() or 0.0)
+            pos_str = (
+                f"{format_duration(current_pos)} / {format_duration(duration)}"
+                if duration > 0
+                else format_duration(current_pos)
+            )
+
+            lines = [
+                f"🎵 {self.translator.translate('Song')}: {result.get('title')}",
+            ]
+            if result.get("artist"):
+                lines.append(f"👤 {self.translator.translate('Artist')}: {result.get('artist')}")
+            if result.get("lyrics"):
+                lines.append(f"🗣 {self.translator.translate('Lyrics heard')}: \"{result.get('lyrics')}\"")
+            lines.append(f"⏱ {self.translator.translate('Position')}: {pos_str}")
+            lines.append(f"🔍 {self.translator.translate('Source')}: {result.get('source')}")
+            if result.get("url"):
+                lines.append(f"🔗 {result.get('url')}")
+
+            msg = "\n".join(lines)
+            self.ttclient.send_message(msg, user)
+            if self.config.general.send_channel_messages:
+                self.send_message_async(msg, type=2)
+
+        except Exception as e:
+            logging.error(f"[WhatSongCommand] Audio identification failed: {e}", exc_info=True)
+            self.ttclient.send_message(
+                self.translator.translate("Error identifying song: {}").format(str(e)),
+                user,
+            )
+
+    def __call__(self, arg: str, user: User) -> Optional[str]:
+        if self.player.state == State.Stopped:
+            return self.translator.translate("Nothing is playing")
+
+        force_audio = arg.strip().lower() in ("-s", "s")
+
+        if not force_audio:
+            current_pos = float(getattr(self.player._player, "time_pos", 0.0) or 0.0)
+            ch_res = song_recognizer.check_chapters(self.player, current_pos)
+            if not ch_res:
+                ch_res = song_recognizer.check_description_tracklist(self.player, current_pos)
+
+            if ch_res:
+                duration = float(self.player.get_duration() or 0.0)
+                pos_str = (
+                    f"{format_duration(current_pos)} / {format_duration(duration)}"
+                    if duration > 0
+                    else format_duration(current_pos)
+                )
+                lines = [
+                    f"🎵 {self.translator.translate('Song')}: {ch_res.get('title')}",
+                ]
+                if ch_res.get("artist"):
+                    lines.append(f"👤 {self.translator.translate('Artist')}: {ch_res.get('artist')}")
+                lines.append(f"⏱ {self.translator.translate('Position')}: {pos_str}")
+                lines.append(f"🔍 {self.translator.translate('Source')}: {ch_res.get('source')}")
+                msg = "\n".join(lines)
+                if self.config.general.send_channel_messages:
+                    self.send_message_async(msg, type=2)
+                return msg
+
+        # Run AI recognition in background
+        self.send_message_async(
+            self.translator.translate("🔍 Listening and identifying the currently playing song..."),
+            user,
+        )
+        self.run_async(self._process_audio_identify, user)
+        return None
+
+
+class LyricsCommand(Command):
+    @property
+    def help(self) -> str:
+        return self.translator.translate(
+            "[NAME] Gets lyrics for the currently playing song or specified song name"
+        )
+
+    def _clean_title(self, title: str) -> str:
+        title = re.split(r"\s+[|•]\s+|\|", title)[0]
+        patterns = [
+            r"\[.*?(?:official|m/?v|video|audio|lyrics?|hd|4k|1080p|remix|version|teaser|live|cover).*?\]",
+            r"\(.*?(?:official|m/?v|video|audio|lyrics?|hd|4k|1080p|remix|version|teaser|live|cover).*?\)",
+            r"【.*?】",
+        ]
+        for p in patterns:
+            title = re.sub(p, "", title, flags=re.IGNORECASE)
+        return re.sub(r"\s+", " ", title).strip()
+
+    def _fetch_lyrics(self, query: str) -> Optional[str]:
+        try:
+            import syncedlyrics
+        except ImportError:
+            logging.error("[LyricsCommand] 'syncedlyrics' package is not installed.")
+            return None
+
+        # 1. Try plain text lyrics first
+        try:
+            res = syncedlyrics.search(query, plain_only=True)
+            if res and res.strip():
+                cleaned = re.sub(r"\[[a-zA-Z]+:[^\]]*\]\s*", "", res)
+                cleaned = re.sub(r"\[\d{1,2}:\d{2}(?:\.\d{1,3})?\]\s*", "", cleaned).strip()
+                if cleaned:
+                    return cleaned
+        except Exception as e:
+            logging.debug(f"[LyricsCommand] Plain search error for {query}: {e}")
+
+        # 2. Try synced / all providers, then strip LRC tags
+        try:
+            raw = syncedlyrics.search(query)
+            if raw and raw.strip():
+                cleaned = re.sub(r"\[[a-zA-Z]+:[^\]]*\]\s*", "", raw)
+                cleaned = re.sub(r"\[\d{1,2}:\d{2}(?:\.\d{1,3})?\]\s*", "", cleaned).strip()
+                if cleaned:
+                    return cleaned
+        except Exception as e:
+            logging.debug(f"[LyricsCommand] Synced search error for {query}: {e}")
+
+        return None
+
+    def _process_lyrics(self, query: str, display_title: str, user: User) -> None:
+        try:
+            lyrics = self._fetch_lyrics(query)
+
+            # If not found and query was from track name, try alternative metadata (artist + track)
+            if not lyrics and getattr(self.player, "track", None):
+                track = self.player.track
+                info = getattr(track, "extra_info", None) or {}
+                artist = info.get("artist") or info.get("creator") or info.get("uploader") or ""
+                track_title = info.get("track") or info.get("title") or ""
+                if artist and track_title:
+                    alt_query = f"{artist} {track_title}".strip()
+                    if alt_query.lower() != query.lower():
+                        lyrics = self._fetch_lyrics(alt_query)
+
+            if not lyrics:
+                self.ttclient.send_message(
+                    self.translator.translate("Lyrics not found for '{}'").format(display_title),
+                    user,
+                )
+                return
+
+            lyrics = re.sub(r"\n{3,}", "\n\n", lyrics)
+            msg = f"📜 {self.translator.translate('Lyrics')}: {display_title}\n\n{lyrics}"
+            self.ttclient.send_message(msg, user)
+            if self.config.general.send_channel_messages:
+                self.send_message_async(msg, type=2)
+
+        except Exception as e:
+            logging.error(f"[LyricsCommand] Error fetching lyrics: {e}", exc_info=True)
+            self.ttclient.send_message(
+                self.translator.translate("Error fetching lyrics: {}").format(str(e)),
+                user,
+            )
+
+    def __call__(self, arg: str, user: User) -> Optional[str]:
+        query = arg.strip()
+        display_title = ""
+
+        if query:
+            display_title = query
+        else:
+            if self.player.state == State.Stopped or not self.player.track:
+                return self.translator.translate("Nothing is playing")
+
+            current_pos = float(getattr(self.player._player, "time_pos", 0.0) or 0.0)
+            ch_res = song_recognizer.check_chapters(self.player, current_pos)
+            if not ch_res:
+                ch_res = song_recognizer.check_description_tracklist(self.player, current_pos)
+
+            if ch_res and ch_res.get("title"):
+                ch_artist = ch_res.get("artist", "")
+                ch_title = ch_res.get("title", "")
+                query = f"{ch_artist} {ch_title}".strip()
+                display_title = query
+            else:
+                raw_name = self.player.track.name or ""
+                query = self._clean_title(raw_name)
+                display_title = query or raw_name
+
+        if not query:
+            return self.translator.translate("Nothing is playing")
+
+        self.send_message_async(
+            self.translator.translate("🔍 Fetching lyrics for '{}'...").format(display_title),
+            user,
+        )
+        self.run_async(self._process_lyrics, query, display_title, user)
+        return None
+
+
+class SubtitleCommand(Command):
+    @property
+    def help(self) -> str:
+        return self.translator.translate("Toggles live video subtitles on bot status")
+
+    def __call__(self, arg: str, user: User) -> Optional[str]:
+        enabled = self._bot.tt_player_connector.toggle_subtitles()
+        if enabled:
+            return self.translator.translate("Video subtitles (sub) enabled.")
+        else:
+            return self.translator.translate("Video subtitles (sub) disabled.")
+
+
+class RadioCommand(Command):
+    @property
+    def help(self) -> str:
+        return self.translator.translate("QUERY Searches and plays a radio station")
+
+    def __call__(self, arg: str, user: User) -> Optional[str]:
+        if not arg:
+            raise errors.InvalidArgumentError
+        self.send_message_async(self.translator.translate("Searching radio..."), user)
+        try:
+            from pyradios import RadioBrowser
+            rb = RadioBrowser()
+            results = rb.search(name=arg, limit=1, hidebroken=True, order="clickcount", reverse=True)
+            if not results:
+                return self.translator.translate("Nothing is found for your query")
+            
+            station = results[0]
+            url = station["url"]
+            name = station["name"]
+            
+            from bot.player.track import Track, TrackType
+            track = Track(url=url, name=name, type=TrackType.Default)
+            self.player.play([track])
+            if self.config.general.send_channel_messages:
+                self.send_message_async(
+                    self.translator.translate(
+                        "{nickname} requested radio {request}"
+                    ).format(nickname=user.nickname, request=arg),
+                    type=2,
+                )
+            return self.translator.translate("Playing radio: {}").format(name)
+        except Exception as e:
+            return self.translator.translate("Error playing radio: {}").format(str(e))
+
+class RadioAddFavoriteCommand(Command):
+    @property
+    def help(self) -> str:
+        return self.translator.translate("Adds currently playing radio to favorites")
+
+    def __call__(self, arg: str, user: User) -> Optional[str]:
+        if user.username == "":
+            return self.translator.translate("This command is not available for guest users")
+        if self.player.state != State.Stopped and self.player.track:
+            track = self.player.track.get_raw()
+            if not hasattr(self.cache, 'radio_favorites'):
+                self.cache.radio_favorites = {}
+            if user.username not in self.cache.radio_favorites:
+                self.cache.radio_favorites[user.username] = []
+            
+            self.cache.radio_favorites[user.username].append(track)
+            self.cache_manager.save()
+            return self.translator.translate("Added radio to favorites")
+        return self.translator.translate("Nothing is playing")
+
+class RadioRemoveFavoriteCommand(Command):
+    @property
+    def help(self) -> str:
+        return self.translator.translate("NUMBER Removes a radio from favorites by number")
+
+    def __call__(self, arg: str, user: User) -> Optional[str]:
+        if user.username == "":
+            return self.translator.translate("This command is not available for guest users")
+        if not hasattr(self.cache, 'radio_favorites') or user.username not in self.cache.radio_favorites or not self.cache.radio_favorites[user.username]:
+            return self.translator.translate("The radio favorites list is empty")
+        
+        if not arg:
+            lines = []
+            for i, t in enumerate(self.cache.radio_favorites[user.username]):
+                lines.append(f"{i + 1}: {t.name}")
+            return "\n".join(lines)
+            
+        try:
+            index = int(arg) - 1
+            del self.cache.radio_favorites[user.username][index]
+            self.cache_manager.save()
+            return self.translator.translate("Removed radio from favorites")
+        except (ValueError, IndexError):
+            return self.translator.translate("Invalid number")
+
+class RadioPlayFavoriteCommand(Command):
+    @property
+    def help(self) -> str:
+        return self.translator.translate("NUMBER Plays a radio from favorites by number")
+
+    def __call__(self, arg: str, user: User) -> Optional[str]:
+        if user.username == "":
+            return self.translator.translate("This command is not available for guest users")
+        if not hasattr(self.cache, 'radio_favorites') or user.username not in self.cache.radio_favorites or not self.cache.radio_favorites[user.username]:
+            return self.translator.translate("The radio favorites list is empty")
+        
+        if not arg:
+            lines = []
+            for i, t in enumerate(self.cache.radio_favorites[user.username]):
+                lines.append(f"{i + 1}: {t.name}")
+            return "\n".join(lines)
+            
+        try:
+            index = int(arg) - 1
+            self.player.play(self.cache.radio_favorites[user.username], start_track_index=index)
+            return self.translator.translate("Playing radio from favorites")
+        except (ValueError, IndexError):
+            return self.translator.translate("Invalid number")
+
+
+class ChannelTranslateCommand(Command):
+    @property
+    def help(self) -> str:
+        return self.translator.translate(
+            "[on/off/<source> <target>] Checks translation status, enables/disables public channel translation, or sets language pair (e.g. tr auto en, tr vi en)"
+        )
+
+    def __call__(self, arg: str, user: User) -> Optional[str]:
+        args = arg.strip().split()
+        current_enabled = getattr(self.config.general, "channel_translation", False)
+        current_from = getattr(self.config.general, "channel_translation_from", "auto") or "auto"
+        current_to = getattr(self.config.general, "channel_translation_to", "en") or "en"
+
+        if not args:
+            arrow = "->" if current_from == "auto" else "<->"
+            status_text = (
+                self.translator.translate("Channel translation is enabled ({lang_from} {arrow} {lang_to}).")
+                if current_enabled
+                else self.translator.translate("Channel translation is disabled ({lang_from} {arrow} {lang_to}).")
+            )
+            return status_text.format(lang_from=current_from, arrow=arrow, lang_to=current_to)
+
+        sub = args[0].lower()
+        if len(args) == 1:
+            if sub in ("on", "1", "enable", "true"):
+                self.config.general.channel_translation = True
+                self.config.general.channel_translation_from = current_from
+                self.config.general.channel_translation_to = current_to
+                try:
+                    self.config_manager.save()
+                except Exception as e:
+                    logging.warning(f"Failed to save config after enabling channel translation: {e}")
+                arrow = "->" if current_from == "auto" else "<->"
+                return self.translator.translate(
+                    "Channel translation enabled ({lang_from} {arrow} {lang_to})."
+                ).format(lang_from=current_from, arrow=arrow, lang_to=current_to)
+            elif sub in ("off", "0", "disable", "false"):
+                self.config.general.channel_translation = False
+                try:
+                    self.config_manager.save()
+                except Exception as e:
+                    logging.warning(f"Failed to save config after disabling channel translation: {e}")
+                return self.translator.translate("Channel translation disabled.")
+            else:
+                raise errors.InvalidArgumentError
+
+        elif len(args) == 2:
+            new_from = args[0].lower()
+            new_to = args[1].lower()
+
+            if new_to == "auto":
+                return self.translator.translate("Error: Target language cannot be 'auto'. Please specify a valid target language.")
+
+            if new_from == new_to:
+                return self.translator.translate("Error: Source and target languages cannot be the same.")
+
+            self.config.general.channel_translation_from = new_from
+            self.config.general.channel_translation_to = new_to
+            self.config.general.channel_translation = True
+            try:
+                self.config_manager.save()
+            except Exception as e:
+                logging.warning(f"Failed to save config after updating channel translation: {e}")
+
+            arrow = "->" if new_from == "auto" else "<->"
+            return self.translator.translate(
+                "Channel translation set to {lang_from} {arrow} {lang_to} (Enabled)."
+            ).format(lang_from=new_from, arrow=arrow, lang_to=new_to)
+        else:
+            raise errors.InvalidArgumentError
+
+
+class TimerCommand(Command):
+    @property
+    def help(self) -> str:
+        return self.translator.translate(
+            "[on/off/end/MINUTES] Checks timer status, enables/disables timer, stops after current video/track ends, or sets timer in minutes (e.g., tm end, tm 30, tm on, tm off)"
+        )
+
+    def __call__(self, arg: str, user: User) -> Optional[str]:
+        sleep_timer = getattr(self.player, "sleep_timer", None)
+        if not sleep_timer:
+            return self.translator.translate("Sleep timer is not available.")
+
+        arg = arg.strip().lower()
+        if not arg:
+            # Query active timer status
+            if not sleep_timer.is_active:
+                return self.translator.translate("No sleep timer is currently active.")
+
+            if sleep_timer.stop_after_current:
+                remaining_secs = sleep_timer.get_remaining_seconds()
+                if remaining_secs > 0:
+                    mins = remaining_secs // 60
+                    secs = remaining_secs % 60
+                    time_part = f" (~{mins}m {secs}s remaining)" if mins > 0 else f" (~{secs}s remaining)"
+                else:
+                    time_part = ""
+                return self.translator.translate(
+                    "Sleep timer is active: playback will stop when current track ends{time_part}."
+                ).format(time_part=time_part)
+
+            remaining_secs = sleep_timer.get_remaining_seconds()
+            if remaining_secs <= 0:
+                return self.translator.translate("Sleep timer is about to stop playback.")
+            mins = remaining_secs // 60
+            secs = remaining_secs % 60
+            if mins > 0 and secs > 0:
+                time_str = f"{mins}m {secs}s"
+            elif mins > 0:
+                time_str = f"{mins}m"
+            else:
+                time_str = f"{secs}s"
+            return self.translator.translate(
+                "Sleep timer is active: {time_str} remaining."
+            ).format(time_str=time_str)
+
+        # Handle 'off': turn off timer
+        if arg == "off":
+            if sleep_timer.cancel():
+                return self.translator.translate("Sleep timer has been cancelled.")
+            else:
+                return self.translator.translate("No sleep timer was active.")
+
+        # Handle 'end': stop when current video / track ends
+        if arg == "end":
+            if self.player.state == State.Stopped:
+                return self.translator.translate("Nothing is playing")
+
+            sleep_timer.set_stop_after_current(user.nickname)
+
+            track_name = getattr(self.player.track, "name", "")
+            track_info = f" ({track_name})" if track_name else ""
+            msg = self.translator.translate(
+                "Sleep timer set: playback will stop when current track ends{track_info}."
+            ).format(track_info=track_info)
+
+            if self.config.general.send_channel_messages:
+                self.send_message_async(
+                    self.translator.translate(
+                        "{nickname} set a sleep timer to stop music when current track ends."
+                    ).format(nickname=user.nickname),
+                    type=2,
+                )
+            return msg
+
+        # Handle 'on': turn on timer with default duration (30 minutes)
+        if arg == "on":
+            minutes = 30.0
+        else:
+            # Parse duration strictly in minutes (e.g., "30", "45", "60")
+            try:
+                minutes = float(arg)
+            except ValueError:
+                raise errors.InvalidArgumentError
+
+            if minutes <= 0:
+                raise errors.InvalidArgumentError
+
+            # Max limit check (e.g. 1440 minutes = 24 hours)
+            if minutes > 1440:
+                return self.translator.translate("Error: Timer cannot be set for more than 24 hours (1440 minutes).")
+
+        sleep_timer.set_timer(minutes, user.nickname)
+
+        dur_str = f"{minutes:g} minute(s)"
+
+        msg = self.translator.translate(
+            "Sleep timer set: music will stop in {duration}."
+        ).format(duration=dur_str)
+
+        # Notify channel if configured
+        if self.config.general.send_channel_messages:
+            self.send_message_async(
+                self.translator.translate(
+                    "{nickname} set a sleep timer to stop music in {duration}."
+                ).format(nickname=user.nickname, duration=dur_str),
+                type=2,
+            )
+
+        return msg
+

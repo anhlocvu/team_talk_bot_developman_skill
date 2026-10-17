@@ -1,0 +1,13 @@
+configparser
+requests
+tqdm
+paramiko
+wikipedia
+langdetect
+gtts
+deep_translator
+msspeech
+wxpython
+yt_dlp
+youtube-search-python
+https://github.com/coletdjnz/yt-dlp-youtube-oauth2/archive/refs/heads/master.zip

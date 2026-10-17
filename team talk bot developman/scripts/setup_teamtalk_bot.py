@@ -125,10 +125,24 @@ def check_project(target_dir=".", auto_fix=False):
         py_dir = os.path.dirname(found_py)
         if py_dir not in sys.path:
             sys.path.insert(0, py_dir)
+        if sys.platform == "win32" and sys.version_info >= (3, 8):
+            for d in [target_dir, py_dir, os.path.dirname(found_dll) if found_dll else None]:
+                if d and os.path.isdir(d):
+                    try:
+                        os.add_dll_directory(d)
+                    except OSError:
+                        pass
         try:
             import TeamTalk5
             version = TeamTalk5.getVersion()
             print(f"    [+] Successfully loaded TeamTalk SDK engine! Version: {version}")
+
+            # Dynamic API inspection from TeamTalk5.py directly
+            tt_class = getattr(TeamTalk5, "TeamTalk", None)
+            if tt_class:
+                methods = [m for m in dir(tt_class) if not m.startswith("_")]
+                events = [e for e in dir(TeamTalk5.ClientEvent) if e.startswith("CLIENTEVENT_")]
+                print(f"    [+] SDK Discovery: Found {len(methods)} methods in TeamTalk class and {len(events)} ClientEvents.")
         except Exception as e:
             issues.append(f"Failed to import TeamTalk5: {e}")
 
@@ -169,13 +183,16 @@ def fix_project(target_dir):
             shutil.copy2(src_file, os.path.join(dest_lib_dir, fname))
             print(f"    [+] Installed: teamtalkpy/{fname}")
 
-    # Copy DLL
+    # Copy DLL to teamtalkpy, root, and sibling TeamTalk_DLL (for stock SDK path resolution)
     if src_dll and os.path.isfile(src_dll):
         shutil.copy2(src_dll, os.path.join(dest_lib_dir, "TeamTalk5.dll"))
         print(f"    [+] Installed: teamtalkpy/TeamTalk5.dll")
-        # Also copy to root for maximum compatibility
         shutil.copy2(src_dll, os.path.join(target_dir, "TeamTalk5.dll"))
         print(f"    [+] Installed: TeamTalk5.dll (root)")
+        dest_dll_sibling = os.path.join(target_dir, "TeamTalk_DLL")
+        os.makedirs(dest_dll_sibling, exist_ok=True)
+        shutil.copy2(src_dll, os.path.join(dest_dll_sibling, "TeamTalk5.dll"))
+        print(f"    [+] Installed: TeamTalk_DLL/TeamTalk5.dll (stock SDK path)")
 
     print("[*] Repair complete. Re-checking...")
     return True
@@ -189,6 +206,8 @@ def init_project(target_dir=".", bot_name="TeamTalkBot", force=False):
 
     dest_teamtalkpy = os.path.join(target_dir, "teamtalkpy")
     os.makedirs(dest_teamtalkpy, exist_ok=True)
+    dest_dll_sibling = os.path.join(target_dir, "TeamTalk_DLL")
+    os.makedirs(dest_dll_sibling, exist_ok=True)
 
     # 1. Install TeamTalkPy & DLL
     src_dir, src_dll = find_bundled_sources()
@@ -199,6 +218,7 @@ def init_project(target_dir=".", bot_name="TeamTalkBot", force=False):
         if src_dll and os.path.isfile(src_dll):
             shutil.copy2(src_dll, os.path.join(dest_teamtalkpy, "TeamTalk5.dll"))
             shutil.copy2(src_dll, os.path.join(target_dir, "TeamTalk5.dll"))
+            shutil.copy2(src_dll, os.path.join(dest_dll_sibling, "TeamTalk5.dll"))
     else:
         print("[!] No bundled assets found. You may need to run '--action download-sdk'.")
 
@@ -551,10 +571,37 @@ def clean_extracted_sdk(extracted_dir):
     print("[+] Redundant SDK files cleaned up. Kept only DLL and Python wrapper.")
 
 
+def list_templates():
+    """List available starter and advanced bot templates in skill resources."""
+    print("[*] Available TeamTalk Bot Templates in Skill Resources:")
+    print("=" * 65)
+    print("1. Starter Recipes:")
+    print("   - basic_bot.py: Minimal echo and command bot boilerplate.")
+    print("   - soundboard_bot.py: Audio stream playback from local directory.")
+    print("   - admin_bot.py: Server administration (kick, ban, mute, channel mgmt).")
+    print("\n2. Advanced Production Blueprints (New):")
+    print("   - TTMediaBot/: High-fidelity music streaming engine for Windows.")
+    print("     * Powered by mpv.dll (libmpv C-API) & WASAPI bit-perfect output.")
+    print("     * yt-dlp native extraction, YouTube/Music streams, playlist zip downloads.")
+    print("     * Live synchronized lyrics/subtitles on TeamTalk status message (szStatusMsg).")
+    print("     * Hybrid song recognition (Chapters -> Shazam -> Google Voice AI).")
+    print("     * Studio DSP (Pitch shift via Rubber Band v3, silence trimming).")
+    print("     * Windows HIGH_PRIORITY_CLASS scheduling for glitch-free playback.")
+    print("   - TTUtilities/: Enterprise server moderation & community suite.")
+    print("     * Direct OOP TeamTalk subclassing with comprehensive event overrides.")
+    print("     * Smart Jail flood protection, duration bans, blacklist & VPN filtering.")
+    print("     * Multi-engine Text-To-Speech (Edge TTS, msspeech, gTTS) into voice channel.")
+    print("     * Real-time automated chat translation (deep_translator).")
+    print("     * Ephemeral password-protected private channels for 2-user chats.")
+    print("     * INI configuration (configparser) and gettext internationalization.")
+    print("=" * 65)
+    print("Inspect their source code in: resources/templates/")
+
+
 def main():
     parser = argparse.ArgumentParser(description="TeamTalk Bot Setup and Diagnostics Tool")
-    parser.add_argument("action", choices=["init", "check", "fix", "download-sdk", "clean"],
-                        help="Action to perform: init (new project), check (diagnose), fix (repair), download-sdk (fetch SDK)")
+    parser.add_argument("action", choices=["init", "check", "fix", "download-sdk", "clean", "list-templates"],
+                        help="Action to perform: init, check, fix, download-sdk, clean, list-templates")
     parser.add_argument("--target-dir", "-t", default=".", help="Target project directory (default: current directory)")
     parser.add_argument("--bot-name", "-n", default="TeamTalkBot", help="Name for the bot project")
     parser.add_argument("--platform", "-p", default=detect_platform_key(), choices=list(SDK_DOWNLOAD_URLS.keys()), help="Target platform for SDK download")
@@ -572,7 +619,10 @@ def main():
         download_sdk(platform_key=args.platform)
     elif args.action == "clean":
         clean_extracted_sdk(args.target_dir)
+    elif args.action == "list-templates":
+        list_templates()
 
 
 if __name__ == "__main__":
     main()
+

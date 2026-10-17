@@ -1,0 +1,891 @@
+# 📋 Changelog — TTMediaBot
+
+All notable updates to this fork are documented here, in reverse chronological order.
+
+---
+
+## 🚀 [Unreleased] — Cleaner Look, Dedicated Settings & Easier Navigation
+
+### 🧹 Cleaner, Clutter-Free Main Screen
+- **More Room for Your Servers:** We moved all audio options, language settings, and extra buttons into their own clean **Settings** window. The main screen is now much tidier, giving you a clear view of your servers without feeling crowded.
+- **Neat & Balanced Buttons:** Buttons on the main screen are now organized in a simple, balanced grid:
+  - You can quickly add a server, open settings, visit your downloads folder, hide the window, or exit.
+  - When you have two or more servers, the **Connect All** and **Delete All Servers** buttons neatly appear together and disappear when not needed, leaving no blank empty spaces.
+
+### ⚙️ Brand New, Easy-to-Use Settings Window
+- **Everything in One Place:** You can open Settings anytime by clicking the new **Settings...** button on the main screen, pressing **`Alt + T`**, or choosing **Settings...** from the server right-click menu.
+- **Two Simple Tabs for Effortless Browsing:** To keep things organized and easy to navigate, settings are split into two clear tabs:
+  - **General & Audio Tab:** All your listening and language choices:
+    - **Language:** Pick your preferred language; the entire app updates instantly.
+    - **Audio Format:** Choose how music is saved (MP3, WAV, FLAC, and more).
+    - **MP3 Sound Quality (Bitrate):** Automatically appears whenever you select MP3, letting you choose between studio-quality sound (320 kbps) or smaller file sizes.
+    - **Sampling Rate:** Adjust audio quality to match your listening setup (recommended 48000 Hz for TeamTalk).
+  - **Information & Support Tab:** Helpful tools and community links:
+    - **View Logs...:** Check recent activity and errors if you ever need troubleshooting help.
+    - **Check for Updates:** Easily check if a newer version of TTMediaBot is available.
+    - **Visit Website & Telegram:** One-click links to visit our official website or join the helpful Telegram community.
+- **Great for Screen Readers (NVDA & JAWS):** Instead of pressing Tab through a long list of options, visually impaired users can simply switch between the two tabs with **`Ctrl + Tab`** or the **Left/Right Arrow** keys.
+
+---
+
+## 🆕 v3.6.0 — Unified Smart Play, Audio Stability & Bitrate Control, Admin File Management & Direct Downloads *(16/10/2026)*
+
+### 🔄 Improved Auto-Updater & Clear Installation Progress
+- **Clear "Installing" Status:** After downloading the update, the status now clearly changes to **"Installing update... Please wait."** instead of closing abruptly. This lets you and screen readers know that the download has finished and installation is beginning.
+- **Visible Installation Progress:** The updater now displays a visible installation progress window with a progress bar while installing files. You can see the progress directly and no longer have to guess when the background installation is finished.
+- **Reliable Automatic Restart:** Once the installation completes, TTMediaBot automatically reopens with the new version ready to use, preventing accidental launches of the old version while updating.
+
+### 🎚️ Audio Sampling Rate Selector
+- **Sampling Rate Selector on Main Window:** Added an intuitive dropdown menu on the main interface allowing you to easily select the audio sampling rate for bot playback and downloaded music.
+- **Simple, Everyday Descriptions for Everyone:** You don't need any sound engineering knowledge — each option clearly explains its everyday purpose:
+  - `Default (48000 Hz - Recommended for TeamTalk)`: Best and most optimized for TeamTalk (matches TeamTalk's native Opus audio standard).
+  - `48000 Hz (TeamTalk / DVD Quality)`: High fidelity, studio and broadcast standard.
+  - `44100 Hz (CD Audio Quality)`: Standard compact disc quality for legacy audio equipment.
+  - `96000 Hz (Hi-Res Studio Quality)`: High-resolution audio for advanced sound cards.
+  - `32000 Hz (FM Radio Quality)`, `24000 Hz (Medium Quality)`, and `16000 Hz (Voice Quality)` for lighter bandwidth usage.
+- **Real-Time Effect:** Changing the sampling rate immediately updates active bot players in real time and automatically applies to all music downloads.
+
+### 🎵 Smart MP3 Bitrate Selector
+- **Appears Automatically When Needed:** When you select **MP3 (`.mp3`)** as your audio format, a dedicated **MP3 Bitrate** dropdown menu immediately appears right below it. If you choose any other format, it automatically hides away to keep your screen clean and clutter-free.
+- **Easy-to-Understand Quality Options:** Choose the perfect balance between great sound quality and lightweight file size:
+  - `320 kbps (Best Quality - Recommended)`: The highest quality available for MP3 files — crystal-clear, rich studio sound.
+  - `256 kbps (Very High Quality)`: Excellent sound fidelity.
+  - `192 kbps (High Quality - Standard)`: Great sound with balanced, fast upload speeds.
+  - `160 kbps (Good Quality)`: Good listening experience with moderate file sizes.
+  - `128 kbps (Standard Quality - Small Size)`: Traditional lightweight MP3 for fast sharing.
+  - `96 kbps (Medium Quality)` & `64 kbps (Voice Quality / Radio)`: Super lightweight for spoken words, radio, and podcasts.
+- **Automatic Audio Processing:** Downloaded songs are automatically encoded with your chosen bitrate before being uploaded to your TeamTalk channel.
+
+### 📥 Administrator Local Audio & Video Downloads (Direct to Host Machine)
+- **Two Standard Admin Commands:** Bot administrators can now download songs or videos directly to the host machine's storage without uploading them back to the TeamTalk server channel. To keep things clean, concise, and aligned with international standards, exactly two dedicated commands are provided:
+  - `da` (**Download **Audio): Downloads the currently playing song (or a query/link if provided, e.g. `da <song name or link>`) as audio and saves it into the host's `downloads/music` folder. It automatically applies your chosen audio format, sampling rate, and MP3 bitrate settings.
+  - `dv` (**Download **Video): Downloads the currently playing video (or a query/link if provided, e.g. `dv <video name or link>`) as a full video file (`.mp4`) and saves it into the host's `downloads/videos` folder.
+- **Strict Permission Protection:** Only bot administrators can execute `da` and `dv`. If a regular (non-admin) user attempts to run these commands, the bot politely blocks the action with an *"Only administrators can use this command"* message to protect host storage.
+- **Clear Status & File Path Notifications:** The bot notifies the administrator in TeamTalk chat when the download starts and when it finishes, providing the exact file name and the saved location on the host computer.
+- **1-Click "Downloads Folder" Button:** Added a **"Downloads Folder"** button directly to the main interface grid, allowing the bot host to open the folder containing downloaded files in File Explorer with a single click or keyboard shortcut.
+
+### 🎶 Unified Smart Play Command (`p`) & Removal of Redundant `u` Command
+- **Unified All-in-One Playback (`p`):** The `p` command now intelligently detects and plays any type of input:
+  - **Web URLs & Streams:** Entering any web link (YouTube video, playlist, direct audio/video stream, internet radio) directly loads and plays the stream.
+  - **Local Files & Folder Paths:** Entering a local file or directory path on the machine (for administrators) immediately loads and plays the audio files.
+  - **Keyword Searches:** Entering song names, artists, or keywords searches online and plays the best match (or presents a numbered list if search results mode `sr` is active).
+  - **No Arguments:** Toggles Pause / Resume on the currently playing track as before.
+- **Removed Redundant `u` Command:** Since `p` now handles URLs and local files with automatic detection, the legacy `u` command has been removed to keep the bot interface modern, clean, and unified.
+- **Enhanced Queue Addition (`qa`):** Command `qa` now shares the same smart detection, allowing you to add songs to the queue using search keywords, direct links, or local paths.
+
+### 📤 Administrator Channel File Management (`uf` & `df`)
+- **Direct File Upload to Channel (`uf <file_path>`):** Bot administrators can upload any local file from the host computer directly to the current TeamTalk server channel by typing `uf` followed by the file path (e.g., `uf "D:\Music\song.mp3"`).
+  - **Comprehensive Safety Checks:** The bot strictly verifies the input to prevent accidental errors:
+    - **Rejects Directories:** If an administrator accidentally enters a folder path instead of a file, the bot clearly explains that the path is a folder and requests a direct file path.
+    - **Path Existence & Validity:** Verifies that the file exists and is a readable file before attempting any upload.
+    - **Channel Connection:** Ensures the bot is connected to a valid channel.
+  - **Asynchronous Background Upload:** The upload runs in the background so the bot remains fully responsive, and sends a notification message with the file name and size once the upload finishes.
+- **Delete Files in Channel (`df [file_name]`):** A single, powerful administrator command to manage and clean up channel files:
+  - **Delete a Specific File:** Type `df <file_name>` (e.g., `df song.mp3` or `df "track name.mp3"`) or file ID to delete only that specific file from the TeamTalk channel.
+  - **Single-Command Cleanup for All Files:** Type `df` alone without any arguments, and the bot automatically retrieves and deletes all uploaded files currently present in the channel.
+  - **Detailed Report:** Notifies the administrator with the exact name of the deleted file, or the total count of successfully removed files.
+- **Strict Administrator Protection:** Restricted exclusively to authorized bot administrators to prevent unauthorized file manipulation.
+
+### 🛡️ Rock-Solid Audio Buffering & Instant Playback Response (Never Stutters)
+- **Zero Audio Dropouts Under Heavy Load:** Resolved the issue where opening multiple browser tabs or running heavy background tasks caused bot playback to stutter or cut out. Bot audio now streams with the same rock-solid stability as the native YouTube web player:
+  - **Ultra-Fast Stream Resolution (170ms):** Direct YouTube mobile stream extraction prioritizes high-compatibility stereo streams without login blocks or fallback penalties, extracting streams instantly in ~170–210 ms for 100% of tracks (including copyrighted, age-checked, and Vietnamese songs).
+  - **Sub-Second Playback Start (~1.0s):** Eliminated blocking initial probes and optimized the hardware audio buffer to 500 ms (`audio_buffer: 0.5s`), reducing total time from entering `p <query>` until music plays from ~3 seconds down to approximately 1.0 second.
+  - **High-Priority Process Scheduling & 1ms Timer:** Automatically elevates TTMediaBot's process priority to `HIGH_PRIORITY_CLASS` on Windows and enables 1ms multimedia timer resolution (`timeBeginPeriod(1)`), ensuring audio threads always receive CPU cycles ahead of browser tabs and background tasks.
+  - **High-Capacity 256 MB Demuxer & Seamless Auto-Reconnect:** Equipped with a 256 MB RAM cache and automated stream reconnection (`reconnect=1,reconnect_streamed=1`), reading ahead up to 1 hour of audio in the background so playback never pauses or drops even during sudden network congestion.
+
+---
+
+## 🆕 v3.5.0 — Ultra-Fast Playback, Worldwide Access, Channel Translation & Audio Converter *(14/10/2026)*
+
+### ⚡ 1. Ultra-Fast Playback & Instant Search (`p`)
+- **6x Faster Playback Response:** Starting a song with `p <name>` is now dramatically faster. The total time from entering the command to hearing music has dropped from almost 5 seconds down to **under 0.8 seconds**!
+- **Direct Stream Extraction (25x Faster):** Instead of downloading large webpage files and running heavy scripts, the bot now connects directly to YouTube's lightweight mobile streaming API, obtaining the music link in just **0.13 seconds** (previously took ~3.5 seconds).
+- **Instant Playback for Cached Songs (0.001s):** Songs played recently or re-requested now start instantly without any waiting or network delay.
+- **Background Pre-Loading:** While a song is playing, the bot quietly prepares and resolves the next song in the background, making track transitions smooth and instantaneous.
+- **Zero Configuration Needed:** All performance improvements work out-of-the-box on every Windows PC without requiring Python, Node.js, or any developer tools to be installed.
+
+### 🌍 2. Worldwide Playback & Geo-Bypass Fix
+- **Fixed "Service is unavailable" Errors:** Resolved an issue where users in certain international countries or regions were unable to search or play YouTube content due to regional restrictions or bot checks.
+- **Smart Multi-Client Routing:** The bot now intelligently switches between mobile and web connection profiles to ensure songs can be found and played reliably from any country in the world.
+- **Connection Keep-Alive:** Keeps active network connections open to Google and YouTube servers so searches and playback start instantly without connection lag.
+
+### 🌐 3. Public Channel Translation (`tr`)
+- **Automatic Channel Translation:** The bot can automatically translate conversation messages in the public TeamTalk channel so everyone in the room can easily understand each other.
+- **Two-Way Translation Mode:** When you specify two languages (such as `tr vi en`), the bot automatically translates both ways:
+  - Messages in Vietnamese are translated to English.
+  - Messages in English are translated back to Vietnamese!
+  - Perfect for two people speaking different languages in the same channel.
+- **One-Way Auto-Detect Mode:** When using `auto` as the source (such as `tr auto en`), the bot detects any language and translates it into your chosen target language (defaults to English).
+- **Simple, Single Command (`tr`):** Control all translation features with one easy command:
+  - `tr`: Check current status, showing `(auto -> en)` for one-way or `(vi <-> en)` for two-way translation.
+  - `tr on`: Turn on public channel translation (defaults to `auto` -> `en`).
+  - `tr off`: Turn off public channel translation.
+  - `tr auto en`: Translate any language to English.
+  - `tr vi en`: Enable two-way translation between Vietnamese and English.
+  - Supports international regional language tags like `en-us`, `pt-br`, `zh-cn`, `ja`, etc.
+- **Sender Nickname in Translations:** Every translation starts with the speaker's name (`[Nickname]: <Translated text>`) so everyone can follow the conversation easily.
+- **Smart Translation Skipping:** If a message is already in the target language, or contains only numbers/emojis, the bot skips it to keep the chat clean.
+- **Helpful Input Checks:** Clearly lets you know if you accidentally set the target language to `auto` or select the same language for both source and target.
+- **Seamless Account Sharing:** Works smoothly even when you and the bot log into the server using the same registered user account.
+- **Channel Chat is Never Mistaken for Commands:** Messages in the public channel are treated strictly as conversation text to translate, keeping bot playback controls secure.
+- **Smooth Background Operation:** Translations are processed quickly in the background without interrupting music playback or server connections.
+
+### 📋 4. View & Save Complete Application Logs
+- **New "View Logs" Button:** You can now click the **"View Logs..."** button (or press `Alt+V`) directly on the main window to check what the bot is doing and inspect any errors. This option is also available in the right-click menu on any server and in the system tray icon menu.
+- **Full History from Disk:** The log window now displays the complete, permanent history saved to disk since the application started, rather than just recent temporary events.
+- **Save Log to File:** Click the **"Save Log..."** button to open the familiar Windows Save File dialog. You can choose where to save the log and save it as a `.log` or `.txt` file, making it simple to share error details for troubleshooting and support.
+- **Refresh & Close:** Instantly reload the latest logs with the **"Refresh"** button, or exit the window with the **"Close"** button (or by pressing `Esc`). Screen-reader friendly (NVDA, JAWS).
+
+### ⏱️ 5. Music Sleep Timer (`tm`)
+- **Automatic Music Shutdown:** You can now set a sleep timer to automatically stop music playback after a desired amount of time. Perfect for listening to music before going to sleep or managing listening time.
+- **Simple, Single Command (`tm`):** Easily turn on, turn off, or customize your sleep timer with one easy-to-remember command (measured strictly in minutes):
+  - `tm end`: Stops music automatically right after the currently playing song or video finishes.
+  - `tm on`: Turns on sleep timer with the default duration (30 minutes).
+  - `tm off`: Turns off and cancels the active sleep timer immediately.
+  - `tm 45`: Sets a custom countdown in minutes (e.g., `tm 15`, `tm 30`, `tm 60`, `tm 90`).
+  - `tm`: Checks the active timer status and remaining countdown time.
+- **Smooth Volume Fade-Out:** When the timer runs out, the bot gradually lowers the volume before stopping if fading is enabled, ensuring a gentle and pleasant stop without sudden loud cutoffs.
+- **Channel & Chat Notifications:** The bot clearly confirms when a timer is set, how much time remains, when it is cancelled, or when it expires.
+
+### 🎵 6. Download Audio Format Selector & Automatic Converter
+- **Audio Format Selector on Main Screen:** Added a convenient combo box on the main interface allowing you to choose your desired audio format when downloading music from YouTube and uploading it to TeamTalk.
+- **Default Format Option:** The first and default option is "Default (No conversion)". When selected, the app keeps YouTube's native `.m4a` audio format without extra processing and uploads it straight away.
+- **Multiple Supported Formats:** Easily choose between popular audio formats including **MP3 (`.mp3`)**, **WAV (`.wav`)**, **FLAC (`.flac`)**, **OGG (`.ogg`)**, **Opus (`.opus`)**, **AAC (`.aac`)**, and **WMA (`.wma`)**.
+- **Fixed Converter in Packaged Executable:** Resolved an issue where audio format conversion would fail with a missing file error in the compiled installer version. Conversion now works 100% reliably out of the box.
+- **Automatic High-Quality Conversion & Cleanup:** Once the audio is downloaded to your computer, the software automatically converts it into your selected format, removes the old temporary file to save disk space, and uploads the converted file cleanly to the channel.
+
+### 🛡️ 7. Reliable Settings & Windows Compatibility
+- **Safe Settings Saving:** Fixed an issue where changing settings or switching languages failed to save when the application was installed in system folders (like `Program Files`). All settings are now safely kept in your Windows user folder (`%APPDATA%\TTMediaBot`).
+- **Clean File Storage:** Music downloads, temporary files, and cache are now neatly organized in standard Windows user folders, ensuring smooth and reliable performance.
+- **Smart Search Fallback for Vietnamese Songs:** Fixed an issue where YouTube's search filter would occasionally return 0 results for specific Vietnamese titles with diacritics (like *"em đi trên cỏ non"*). The bot now automatically retries with an unaccented fallback query, ensuring songs are always found and played smoothly.
+- **Startup & Path Optimization:** Cleaned up internal paths to ensure fast startup and 100% native stability on Windows.
+
+---
+
+## 🆕 v3.4.0 — Global Internet Radio, Auto-Updater & Portuguese Support *(10/12/2026)*
+
+### 📻 1. Listen to Global Internet Radio
+- **Search and Play Radio (`ra`):** You can now search and play internet radio stations from all around the world.
+- **Smart Channel Selection:** When you search for a radio station, the bot automatically skips broken channels and picks the most popular working channel.
+- **Radio Favorites (`raf`, `rmr`, `rpf`):** You can now save your favorite radio stations to a new, separate list. This makes it easy to add, remove, and quickly play your favorite radio channels.
+
+### 🔄 2. Automatic Software Updates
+- **Automatic Update Check:** The app now checks for newer versions on GitHub every time it opens. You can also click the new "Check for Updates" button in the main window at any time.
+- **In-App Release Notes:** Read the full list of changes and new features directly inside the update dialog before deciding to upgrade.
+- **One-Click Silent Install:** When you click "Update", the app automatically downloads the latest installer, installs it quietly in the background without asking you to click Next or accept licenses, cleans up the downloaded file, and reopens the updated app right away.
+
+### 🖥️ 3. Graphical Server Manager Improvements
+- **Server Search Box:** Added a quick search box to the main interface. You can now type a few letters to instantly find and connect to your saved servers. Fully accessible for screen readers (NVDA).
+- **Delete All Servers:** Added a "Delete All Servers" button next to "Connect All" to quickly clear your server list. It includes safety checks and warnings if any servers are currently connected.
+- **Check for Updates Button:** Added a dedicated button on the main window to check for online updates anytime.
+
+### 🌐 4. Portuguese Language Support
+- **Portuguese Support:** Added full Portuguese (`pt_BR`) language translation for both the interface and bot commands, translated by **Otávio Santiago**.
+
+---
+
+## 🆕 v3.3.0 — Graphical Server Manager & Full Vietnamese Support *(10/08/2026)*
+
+### 🖥️ 1. Graphical Server Manager (GUI)
+- **Visual Server Management:** View, add, edit, and delete your TeamTalk servers through a clean and intuitive window without editing configuration files manually.
+- **Multi-Server Support:** Connect and run multiple bots on different TeamTalk servers simultaneously, with clear status indicators for each server (Connected, Connecting, Reconnecting).
+- **Smart "Connect All" Feature:** When two or more servers are configured, a "Connect All" button lets you connect or disconnect all bots with a single click or keystroke.
+- **Screen Reader Friendly:** Fully accessible for blind and visually impaired users with seamless keyboard navigation (arrow keys, Enter to connect/disconnect, Delete to remove, and Applications key for context menu).
+- **System Tray Support:** Minimize the app to the system tray to keep it running smoothly in the background, with quick access to restore the window or manage connections.
+
+### 🌐 2. Full Vietnamese Language Support
+- **Complete Translation:** All interface elements, settings, notifications, and bot commands/responses inside TeamTalk channels are now available in natural Vietnamese, translated by **Nguyễn Ninh Hoàng**.
+- **Instant Language Switching:** Switch between supported languages directly from the main window at any time without needing to restart the application.
+- **Automatic Preference Saving:** The app remembers your preferred language for future sessions.
+
+### 📦 3. Official Windows Installer
+- **Convenient Setup:** Easily install TTMediaBot using a dedicated Windows installer (`Setup_TTMediaBot_v3.3.0.exe`) with an optional desktop shortcut for quick access.
+
+---
+
+## 🆕 v3.2.0 — Live Subtitles, Admin Help Menu & Smooth Audio Seeking *(10/06/2026)*
+
+### 💬 1. New Feature: Live Video & Song Subtitles (`sub`)
+- **Real-Time Subtitle Display:** While playing a video or song, type `sub` and the lyrics or spoken words will stream live directly onto the bot's status text—just like watching a YouTube video with Closed Captions (CC) turned on.
+- **Works on All YouTube Videos:** Retrieves subtitles from any YouTube video (news broadcasts, podcasts, tutorials, interviews, vlogs, and music). Supports both subtitles uploaded by the creator and YouTube's auto-generated speech subtitles.
+- **Vietnamese & English Priority:** Automatically chooses Vietnamese subtitles first if available, followed by English or the video's original language.
+- **Automatic Song Lyrics Search:** For music videos without YouTube subtitles, the bot automatically searches international lyrics databases to find time-synced lyrics for you.
+- **How to Use:** Type `sub` to turn subtitles on; type `sub` again to turn them off. Your preference is saved automatically (`video_subtitles` in `config.json`).
+
+### ⏩ 2. Bug Fix: Smooth, Instant Seeking Without Audio Cuts (`sf` & `sb`)
+- **Instant Response:** Commands `sf` (seek forward) and `sb` (seek backward) now respond immediately with no delays or pauses.
+- **No More Audio Drops:** Expanded memory buffer and resolved playback issues—now you can seek forward and backward repeatedly without audio stuttering, cutting out, or stopping.
+- **Smart Position Adjustments:** 
+  - Seeking backward past the start of a song automatically rewinds to `0:00` (beginning) without errors.
+  - Seeking forward past the end of a song holds at the very end to finish playing instead of abruptly skipping to the next track.
+- **Flexible Number Input:** Supports both positive and negative numbers (e.g. `sb 10` or `sb -10` both rewind 10 seconds; `sf 15` fast-forwards 15 seconds).
+
+### 🛡️ 3. For Administrators: Dedicated Admin Help Menu (`adh`)
+- **Dedicated Admin Menu:** Administrators can type `adh` to view the full list of admin-only commands without cluttering the regular user command list.
+- **Secure Access:** Regular users cannot view or run this command.
+- **Easy to Discover:** The `adh` command is also mentioned in the main help menu (`h`) so new administrators can discover and use it right away.
+
+---
+
+## 🆕 v3.1.0 — Identify Currently Playing Songs & Music (`ws`) *(10/03/2026)*
+
+### 🔍 1. Identify Songs in Mixes & Compilations (`ws`)
+- **Find Song Titles on the Fly:** When listening to a long compilation, mashup, or DJ mix and you want to know what song is playing, simply type `ws`.
+- **Identifies Both Instrumental & Vocal Tracks:**
+  - **Instrumental Music (piano, guitar, lofi, orchestra):** Uses melody recognition (Shazam) to identify the song.
+  - **Songs with Singing (pop, acoustic, live covers):** Listens to the lyrics being sung and finds the exact song title.
+  - **Videos with Tracklists:** If a YouTube video includes time stamps or chapters in the description, the bot identifies the song instantly.
+- **Ultra-Fast Results (3 to 5 Seconds):** Recognition takes only a few seconds, and the bot immediately sends the song title and artist to the chat.
+- **No Playback Interruptions:** The recognition process runs quietly in the background without pausing, stuttering, or interrupting the audio in the room.
+- **How to Use:** Type `ws` to find the current song; type `ws -s` to force acoustic recognition.
+
+---
+
+## 🆕 v3.0.0 — Native Windows Optimization, Pitch Control & General Improvements *(10/02/2026)*
+
+### 🪟 1. Smooth, Native Windows Performance
+- **Runs Directly on Windows:** Completely redesigned to run natively and smoothly on Windows (Windows 10, Windows 11) without needing Docker, Linux scripts, or complicated third-party tools.
+- **Clear Audio Quality:** Uses the standard Windows audio system to ensure clean, high-quality audio playback without delays or crackling.
+- **Silent Startup:** Automatically blocks popup dialogs that previously appeared when starting up on Windows.
+- **Full Vietnamese & Unicode Support:** The command console correctly displays accented Vietnamese characters and international song titles without font glitches.
+
+### 🎛️ 2. Change Pitch & Key of Songs (`pt`)
+- **Easy Key Adjustment:** Raise or lower the pitch of any song from -12 to +12 semitones with the `pt` command (e.g. `pt 2` to raise 2 keys, `pt -2` to lower 2 keys, `pt 0` to reset to original).
+- **Clear Sound:** Keeps vocals natural and audio punchy when changing pitch without sounding robotic or distorted.
+- **Remembers Key Setting:** Your chosen pitch stays active for upcoming songs automatically.
+
+### ✂️ 3. Automatic Silence Trimming (`ts`)
+- **Seamless Music Flow:** Type `ts` to enable automatic trimming of dead silence at the beginning and end of tracks, making transitions between songs smooth and seamless.
+
+### 🔗 4. Get Permanent YouTube Links (`yl`)
+- **Permanent YouTube Links:** Added the `yl` command to get the permanent YouTube watch link (`https://www.youtube.com/watch?v=...`) of the playing song, making it easy to share or save.
+- **Automatic Link Shortening:** Automatically shortens long links if link shortening is enabled in your configuration.
+
+### ⚡ 5. Faster Track Loading & Preloading
+- **Instant Track Skips:** The bot preloads the next 2 songs in the playlist, so clicking next (`n`) plays the next song immediately without waiting for downloads.
+- **YouTube Account Support:** Supports adding a `cookies.txt` file to play age-restricted videos and member-only content.
+- **Download Full Playlists (`dlp`):** Type `dlp [link]` to download an entire playlist and upload it to the TeamTalk channel as a ZIP archive.
+
+### 💬 6. Helpful Improvements & Bug Fixes
+- **Flexible Help Command (`h`):** The help command ignores uppercase, lowercase, and extra spaces (e.g. `h pt` or `h PT` both work).
+- **Automatic Message Paging:** Long lists and menus are automatically split into neat pages so they never flood the chat window.
+- **Remembers Message Mode (`cm`):** The `cm` command (toggling between channel messages and private messages) saves automatically to settings.
+- **Bug Fixes:** Fixed playback stopping issues, previous track navigation bugs during repeat modes, and improved stability during internet reconnects.
+
+---
+
+## 🆕 v2.8.0 — "Unified Music Discovery & Expiry-Aware Playback" *(08/31/2026)*
+
+### 🎵 Unified YouTube.js Discovery
+- **🧹 Removed `ytmusicapi`:**
+  Migrated YouTube Music song search and authenticated Up Next radio to the shared YouTube.js bridge, removing the per-bot Python client, cookie-authentication duplication, HTTP/2 pool, and runtime dependency.
+- **🔎 Native Music Catalog Search:**
+  Added a bridge Music-search mode that preserves song, artist, duration, video ID, and playable URL metadata expected by the existing `ytm` service.
+- **📻 Authenticated Shared Recommendations:**
+  Added cookie-isolated Music Up Next retrieval with bounded caching and pending-request deduplication for both YTM autoplay and the YT recommendation fallback.
+
+### ⚡ Bounded Search and Stream Caching
+- **🔁 Shared Search Cache:**
+  Added normalized, public catalog caches for WEB and YTMUSIC searches with a 10-minute TTL, 512-entry LRU bound, and in-flight deduplication.
+- **⏳ Expiry-Aware Stream Reuse:**
+  Replaced the fixed five-minute stream cache with a lifetime derived from each signed URL's `expire` value, a two-minute safety margin, and a one-hour maximum.
+- **🐍 Local Stream Reuse:**
+  Added a per-bot Python cache that uses the bridge-provided safe deadline to avoid repeated local HTTP requests for the same valid stream.
+- **🧯 One-Shot Recovery:**
+  When `mpv` rejects a YouTube stream, the player now invalidates Python and bridge caches, resolves a fresh URL, and retries once without duplicating recent history.
+
+### 📊 Resolution Diagnostics and Tests
+- **🔬 Stage-Level Timings:**
+  Added safe timing logs for PO-token generation, Player API requests, format selection, signature deciphering, cache lifetime, and total client resolution without logging token or cookie values.
+- **✅ Regression Coverage:**
+  Added Node tests for TTL/LRU behavior, pending-request deduplication, media mapping, and URL-expiry calculations, plus Python tests for bridge contracts, YTM migration, stream refresh, and one-shot player recovery.
+
+### 🧪 Clean-Rebuild Verification
+- **🩹 Legacy Update Recovery:**
+  Fixed upgrades from pre-shared-service releases that could rebuild and restart bot containers without starting `ttmediabot-youtube`. The updater now reloads deployment logic after replacing itself, reconciles a missing or unhealthy shared service even when no rebuild is pending, and lets the auto-updater trigger recovery when port 4417 is unavailable.
+- **📦 Runtime Dependency Removal:**
+  Confirmed after an option **3** rebuild that `ytmusicapi` is absent from the generated image and that the shared YouTube service and bot container start healthy.
+- **✅ Automated Validation:**
+  Executed all 18 migration tests successfully: nine Node.js tests for bridge primitives and nine Python tests for service and playback contracts.
+- **⚡ Integration Measurements:**
+  Verified YouTube video search, YouTube Music song search, authenticated Up Next, stream invalidation, fresh resolution, and cache reuse. On the validation host, repeated searches fell from approximately 0.47–0.54 seconds to 3–4 milliseconds, and a forced fresh resolution fell from approximately 0.37 seconds to about 3 milliseconds on cache reuse.
+- **🎧 Long-Media Compatibility:**
+  Resolved a 36,107-second video through the YTMUSIC client while retaining the established long-media `mpv` configuration and the bounded one-shot stale-stream recovery path.
+
+---
+
+## 🆕 v2.7.0 — "Shared YouTube Service, Playback Diagnostics & Queue Reliability" *(08/31/2026)*
+
+### 🏗️ Shared Multi-Bot YouTube Architecture
+- **🌐 One Backend for Every Bot:**
+  Replaced the per-bot Node.js bridge and PO-token provider with one managed `ttmediabot-youtube` container. Bot containers are now Python-only and connect through their host network to the bridge published exclusively on `127.0.0.1:4417`.
+- **🍪 Per-Bot Authentication Isolation:**
+  Added validated `bot_id` routing so each request uses only its corresponding `bots/<name>/cookies.txt`. Cookie-backed YouTube.js sessions are isolated and retained in a bounded 64-entry least-recently-used cache.
+- **⚡ Shared Resolution and Request Caches:**
+  Added bounded stream-resolution caching, in-flight request deduplication, and session reuse to avoid repeating expensive extraction work across searches and track transitions.
+- **🔁 Resilient Bridge Connections:**
+  Added five bounded connection attempts with exponential backoff when the shared service is starting or restarting.
+- **🔒 Reduced Service Exposure:**
+  Bound the bridge to `127.0.0.1:4417` on the host and kept the PO-token provider on port `4416` internal to the shared container.
+- **🧩 Shared Service Supervisor:**
+  Added `youtube_services.sh` to supervise both Node.js processes and propagate shutdown cleanly.
+
+### 🐳 Docker Lifecycle and Management
+- **🎛️ Dedicated Server Controls:**
+  Added main-menu option **8** and `youtube_server_manager.sh` with Start, Stop, Restart, and Return actions. Start and restart wait for a successful bridge health check.
+- **🔄 Rebuild and Migration Support:**
+  Updated `ttbotdocker.sh` to create, health-check, and reuse the shared service, remove obsolete per-bot service processes, and migrate installations built from the legacy image layout.
+- **⬆️ Updater Integration:**
+  Updated `update.sh` to deploy and validate the shared service before recreating bot containers while preserving their previous running state.
+- **🗑️ Uninstaller Integration:**
+  Updated safe and full uninstall paths to remove the shared YouTube container and network resources in scope.
+- **🧹 Bot Cache Cleanup:**
+  Added Manage Bots option **12** to delete `*.cache` and `*.dat` files strictly below managed directories in `bots/`, with confirmation and per-bot reporting. Return moved to option **13**.
+
+### ⏱️ Playback Performance and Observability
+- **📊 End-to-End Timing Logs:**
+  Added correlated measurements for typed search commands, result selection, next-track transitions, URL resolution, `mpv` handoff, and actual playback start across all media services.
+- **🔎 Startup and Service Timings:**
+  Added timing logs for service initialization and background warm-up so first-request behavior can be compared with long-running behavior.
+- **🔥 Background Pre-Warming:**
+  Moved YouTube session/search warm-up out of the blocking startup path and retained a fast health endpoint so bot startup is not delayed by external requests.
+- **💾 Stream Resolution Cache:**
+  Cached reusable resolved streams and removed repeated URL-resolution work from the hot playback path.
+- **🚦 Bounded Prefetch:**
+  Limited background prefetch work and pending requests to prevent queue growth and progressive playback slowdown during long sessions.
+- **📝 Reduced Hot-Path Log Noise:**
+  Removed repeated stream-URL logging while preserving structured latency and failure diagnostics.
+- **🎧 MPV Buffer Tuning:**
+  Increased playback buffer and read-ahead settings, and standardized PulseAudio/MPV output to 48 kHz stereo for more stable playback handoff.
+
+### 🛡️ YouTube Playback and PO-Token Fixes
+- **🔑 Video-Bound PO Tokens:**
+  Corrected GVS PO-token generation so tokens are bound to the target video ID, resolving authenticated stream failures and intermittent HTTP 403 responses.
+- **🧍 Isolated Shared Token Provider:**
+  Separated token-provider state from bot sessions while retaining per-bot cookie selection in the shared bridge.
+- **🧯 Playback State Hardening:**
+  Fixed missing bot assignment and protected recent-track access from `IndexError` during asynchronous playback transitions.
+
+### 📻 Queue, Playlist, and Autoplay Improvements
+- **♾️ Continuous Recommendations:**
+  Added continuous autoplay replenishment with multiple recommendation candidates, greater radio variety, and automatic skipping of unavailable suggestions.
+- **📚 Complete Playlist Pagination:**
+  Added YouTube playlist continuation support, including desktop `WEB` continuations, progress reporting, and final loaded-track totals.
+- **🔀 Full-Playlist Random Mode:**
+  Random playback now covers the complete playlist, starts with a randomized first track, reshuffles endlessly, and keeps the internal index list synchronized.
+- **🔗 Channel URL Recognition:**
+  YouTube and YouTube Music channel URLs are now treated as playlist-style collections where supported.
+- **⏹️ Playlist Boundary Rules:**
+  Continuous autoplay is disabled for explicit playlists and end-of-list behavior now respects the selected playback mode.
+
+### 🎮 Playback Commands and Localization
+- **🔢 Direct Next Selection:**
+  Extended `n` with an optional track number for direct queue navigation.
+- **📍 Position Queries:**
+  Added `n ?` and `c ?` queries to report the current queue/search position without changing playback.
+- **🌍 Complete Translation Coverage:**
+  Added the new command and playback messages to all seven maintained locale catalogs and recompiled GNU MO files with UTF-8 metadata.
+
+### 🧰 Maintenance
+- **🗑️ Legacy Workflow Removal:**
+  Removed the obsolete nightly update workflow after the backend migration.
+- **🙈 Diagnostic Artifact Ignore Rule:**
+  Added the local `fast_forensics.py` utility to `.gitignore` so server diagnostics cannot be committed accidentally.
+
+---
+
+## 🆕 v2.6.0 — "YouTube.js Bridge Architecture & Native Stream Resolution" *(08/29/2026)*
+
+### 🚀 YouTube.js Bridge Architecture (Goodbye `yt-dlp` & `py-yt-search`)
+- **⚡ Persistent Node.js Bridge (`youtube_bridge`):**
+  Replaced `yt-dlp` stream extraction with a dedicated, persistent HTTP bridge powered by `YouTube.js` (`youtubei.js`). This eliminates external subprocess overhead, decreases latency, and enables native YouTube stream extraction directly compatible with `mpv`.
+- **🔍 Native YouTube Search:**
+  Migrated YouTube searches from `py-yt-search` directly to the `YouTube.js` bridge. Removed `py-yt-search` and `yt-dlp` from Python dependencies (`requirements.txt`).
+- **🛡️ MPV Compatibility & Client Isolation:**
+  Configured client separation (`YTMUSIC` and `WEB`) within the bridge for optimal stream extraction while keeping `ytmusicapi` responsible for rich catalog discovery and personalized autoplay.
+
+### ⏱️ Session Pre-Warming & Startup Acceleration
+- **🔥 Handshake Warmup:**
+  Implemented automatic session pre-warming during bot startup (`_pre_warm()`). Initializes the Innertube session and warms stream resolution to reduce initial search and playback latency.
+- **🔒 Dedicated Web Session Isolation:**
+  Separated the persistent search session from authenticated playback sessions to avoid cross-contamination between search and stream-resolution state.
+
+### 🛡️ Stream, Cookie, and Deployment Reliability
+- **🎧 MPV-Compatible Stream Selection:**
+  Corrected YouTube and YouTube Music client selection and audio-format resolution so the bridge returns deciphered URLs that `mpv` can consume directly.
+- **🔑 Authenticated PO-Token Sessions:**
+  Bound PO-token generation to the authenticated Innertube session used for stream extraction, improving protected-video reliability.
+- **🍪 Robust Netscape Cookie Parsing:**
+  Added support for spaced cookie configuration, selected the latest duplicate cookie value, and isolated cookie-backed bridge sessions per bot instance.
+- **📥 Exact Download Selection:**
+  Restricted download commands to the YouTube item explicitly requested by the user instead of accidentally expanding unrelated entries.
+- **⏭️ Rapid-Skip Protection:**
+  Prevented repeated tracks when users skip quickly while asynchronous resolution is still completing.
+- **🔐 Preserved Bot Ownership:**
+  Corrected rebuild and update flows so rewritten bot configurations retain the expected container user ownership.
+
+### 🔥 Warm-Up and Build Refinements
+- **♻️ Single Warm-Up Lifecycle:**
+  Avoided repeated session warm-ups and coordinated search and stream-resolution readiness with bot startup.
+- **📦 Reproducible Bridge Dependency Layer:**
+  Cached the selected upstream YouTube.js source and its package metadata in dedicated Docker build layers for faster, more consistent rebuilds.
+
+### 🌐 Multi-Instance Dynamic Port Isolation
+- **🔀 Seed-Based Port Allocation:**
+  Added automatic dynamic port offset calculations in `entrypoint.sh` based on container hostname or `TTBOT_INSTANCE` (`PORT_BASE`, `POT_PROVIDER_PORT`, `YOUTUBE_BRIDGE_PORT`).
+  Eliminates port binding collisions when running multiple bot instances on host networking mode.
+- **🍪 Isolated Cookie Sessions:**
+  Improved cookie parser to isolate Netscape `cookies.txt` sessions per instance and prefer latest duplicate cookie entries with support for spaced cookie configuration.
+
+### 📦 System Dependencies & Build Modernization
+- **🎥 FFmpeg Core Requirement:**
+  Added `ffmpeg` as a standard system dependency across all Linux package managers in `install.sh` and `Dockerfile`.
+- **📦 Layered Dependency Caching:**
+  Modernized Docker build caching by isolating `youtube_bridge/package.json` and running `npm install --omit=dev` in a dedicated cache layer.
+
+---
+
+## 🆕 v2.5.2 — "Dedicated Uninstaller & Legal Protection" *(08/17/2026)*
+
+### 🛡️ Dedicated Uninstaller Submenu (`uninstall.sh`)
+- **📜 Standalone Uninstaller:**
+  Extracted and refactored the uninstallation logic from `ttbotdocker.sh` into a standalone, fully English-localized script [`uninstall.sh`](file:///root/joao/TTMediaBot/uninstall.sh).
+- **🟢 Option 1 — Standard Uninstall (Safe & Recommended):**
+  Removes **ONLY** TTMediaBot containers (labeled `role=ttmediabot`), the `ttmediabot` Docker image, bot data folders (`bots/`), the auto-updater systemd service, and temporary lock files. Preserves Docker Engine, system packages (`git`, `curl`, `jq`), and any other Docker projects on the server.
+- **🔴 Option 2 — Complete System Purge (DESTRUCTIVE):**
+  Purges TTMediaBot along with Docker Engine, Docker volumes, networks, system firewall (`iptables`) rules, system packages (`git`, `curl`, `jq`, `gnupg`), and Docker system directories (`/var/lib/docker`).
+
+### ⚖️ Legal Disclaimers & Explicit Confirmation
+- **⚠️ Liability Disclaimer:**
+  Added prominent legal disclaimers to Option 2 in `uninstall.sh` and `README.md`, stating that the developer/author assumes no responsibility or liability for data loss, server downtime, or system instability caused by executing full purges (especially on production or shared servers).
+- **🔒 Explicit Confirmations:**
+  Requires explicit confirmation prompts (`y/N` for Option 1, and typing `yes` to accept the disclaimer for Option 2). Option `0` cleanly exits the uninstaller without forcing a return loop to `ttbotdocker.sh`.
+
+### 🎨 Clean Output & Documentation
+- **🧹 UI Clean-up:**
+  Cleaned up repetitive ASCII border lines (`====`) across `uninstall.sh`, `ttbotdocker.sh`, and `install_git_clone.sh` for a cleaner terminal output.
+- **📖 README & Terms of Use:**
+  Updated `README.md` with the new uninstaller options, explicit production warnings, and a dedicated **Legal Disclaimer & Terms of Use** section.
+
+---
+
+## 🆕 v2.5.1 — "Proof of Origin & Playback Rate Limit Bypass" *(07/11/2026)*
+
+### 🔒 Automated PO Token Integration (Anti-Bot Bypass)
+- **🤖 Built-in DroidGuard/PO Token Provider:**
+  Integrated the `bgutil-ytdlp-pot-provider` Node.js server directly inside the bot's Docker container. The server starts automatically in the background on port `4416` via `entrypoint.sh`.
+- **🔌 Global Plugin Integration:**
+  Embedded the `bgutil-pot` python plugin directly into Python's global `site-packages/yt_dlp_plugins/` directory during Docker image build. This ensures that any `yt-dlp` execution (either Python imports or command-line runs) automatically intercepts YouTube requests to sign them with valid PO Tokens.
+
+### ⏱️ Playback Rate Limit / 403 Forbidden Fix
+- **⏳ Complying with YouTube Signature Delay:**
+  Resolved a critical `HTTP 403 Forbidden` error caused by requesting signed `googlevideo.com` media streams too quickly after URL signature generation. Added a `1.5` seconds sleep delay in `_play` method inside `bot/player/__init__.py` (matching `yt-dlp`'s internal downloader delay).
+- **🌐 Dynamic Header Injection:**
+  Configured `mpv` player instance to dynamically inherit the exact `User-Agent` and HTTP header fields extracted by `yt-dlp` for each track to avoid query-header mismatches on YouTube CDN servers.
+
+---
+
+## 🆕 v2.5.0 — "Personalized Autoplay & Deadlock Fix" *(06/16/2026)*
+
+### 📻 Personalized Autoplay & Recommendations (Cookies Integration)
+- **🆕 YouTube (`yt`) Autoplay Implementation:**
+  Fully implemented the Autoplay/Watch Playlist feature for the standard YouTube (`yt`) service from scratch (matching YTM behavior). This scrapes recommendations directly from YouTube watch pages and appends them to the queue when playing the last track or single videos.
+- **🍪 Authenticated Scraper for YouTube (`yt`):**
+  Added support for Netscape cookies (`cookies.txt`) inside the new `_get_recommendations` scraper by loading the cookie file using `http.cookiejar.MozillaCookieJar` and passing it to `requests.get()`. This enables personalized recommendation fetching for the standard YouTube service.
+- **🍪 Authenticated YTM Autoplay:**
+  Upgraded the YouTube Music (`ytm`) service to fetch autoplay playlists using the authenticated client `self.ytmusic` (initialized with cookies) instead of the public `self.ytmusic_public` client, enabling personalized suggestions and falling back dynamically to public requests if cookies are not present.
+
+### 🛡️ Deadlock & Extraction Bug Fixes
+- **🔒 Thread-Safe Lock Recursion Prevention:**
+  Resolved a critical deadlock where resolving dynamic tracks inside the background queue processor (`Thread-3`) would recursively call `last_track.url` in the autoplay validator. Since `threading.Lock` is non-reentrant, this caused the thread to block indefinitely. Fixed by parsing the video ID directly from the private `last_track._url` property, bypassing dynamic property resolution and lock acquisition.
+- **⚙️ Volatile Metadata Resolution Fix:**
+  Fixed a `Failed to fetch stream data` bug where recommended tracks passed a raw scraper node dictionary as `extra_info` directly into `ydl.process_ie_result`, causing crash exceptions. The bot now checks if `extra_info` is a recommendation dictionary and dynamically resolves full yt-dlp metadata first.
+- **🌀 Robust Recursive Parser:**
+  Upgraded the recommendation HTML parser to recursively traverse JSON looking for both classic `compactVideoRenderer` and modern `lockupViewModel` structures, keeping recommendations resilient to YouTube web updates.
+
+---
+
+## 🆕 v2.4.9 — "Early Warning Update System" *(06/16/2026)*
+
+### 📢 Pre-Update Notifications & i18n
+
+- **🔔 Early Warning Notification:**
+  Integrated a signaling mechanism using an `update_in_progress` trigger file. As soon as the VPS update or rebuild starts (when option `y` is selected in `update.sh`), the bot posts a warning message to the active TeamTalk channel: *"The bot is starting an update process and will restart shortly. It may go offline at any moment."*
+- **🛑 Graceful Shutdown Alert:**
+  Added signal handling for `SIGTERM`. When the container is stopping or restarting, the bot intercepts the termination signal and posts an immediate localized warning: *"The bot is restarting now to apply the update. See you in a moment!"* to the active TeamTalk channel before shutting down.
+- **✅ Update Success Notification:**
+  Integrated signaling logic where `update.sh` creates an `update_success` trigger file after a successful Docker container recreate. On boot, the bot checks for this file, announces: *"Update completed successfully! I am back online."*, and deletes the file.
+- **🌍 100% Translated warning:**
+  Fully translated and compiled the update starting, shutdown warning, and update success messages into all 8 supported languages (English, Portuguese, Spanish, Russian, Turkish, Arabic, Hungarian, Indonesian), ensuring native translation based on the bot's configured language.
+
+---
+
+## 🆕 v2.4.8 — "Documentation Restructuring" *(06/16/2026)*
+
+### 📋 Documentation & Layout Simplify
+
+- **🧹 Reverted Multi-Language Restructuring:**
+  Removed the `docs/` directory and all translated READMEs. Restored the comprehensive root `README.md` to its original state. Moved `CHANGELOG.md` back to the root directory for simpler and cleaner navigation.
+- **🗑️ Obsolete & Development Files Cleanup:**
+  Removed unused scripts inside `tools/` (`vk_auth.py`, `yam_auth.py`, `libmpv_win_downloader.py`, `ttsdk_downloader.py`), development configuration files (`pyrightconfig.json`, `development-requirements.txt`), and IDE type stubs (`typestubs/`) to keep the codebase minimal and clean.
+
+---
+
+## 🆕 v2.4.7 — "Auto-Cleanup & DLL Management" *(06/14/2026)*
+
+### 🐳 Docker & System Auto-Cleanup
+
+- **🧹 Automatic Non-Interactive Pruning:**
+  Added automatic Docker resources pruning to `update.sh` that executes immediately after the bot containers have successfully restarted and passed health checks.
+  This runs `docker system prune -af --volumes` and `docker build/buildx prune -af` silently in the background, freeing up massive disk space (e.g. 1.3GB+) from older layers and build caches without requiring user interaction.
+
+- **📜 System Journal Vacuuming:**
+  Integrated journal logs vacuuming (`journalctl --vacuum-time=1d`) at the end of the update flow to prevent host log files from bloating the VPS storage.
+
+### ⚙️ TeamTalk DLL Auto-Management
+
+- **📥 Automated Architecture-Aware DLL Updates:**
+  Added automatic downloading and extraction of TeamTalk DLL dependencies inside `update.sh`.
+  The script automatically detects if the host is running on an ARM architecture (aarch64/arm) to download the matching `ttarm.zip` library, or falls back to the standard `TeamTalk_DLL.zip` for x86_64 systems, facilitating seamless cross-platform updates.
+
+---
+
+## 🆕 v2.4.6 — "Search Performance & Docker Optimization" *(06/13/2026)*
+
+### ⚡ YouTube Music Search Speed Optimization
+
+- **🔥 Persistent HTTP/2 Keep-Alive:**
+  Configured `httpx.Limits(keepalive_expiry=30.0)` in `ytm.py` and reduced the background connection keeper sleep interval to `4 seconds`. This keeps the YTM session warm in the background and drops search response latency from ~1000ms to ~500ms.
+
+- **⚡ HTTP/2 Support (YTM):**
+  Integrated `httpx[http2]` inside `ytm.py` to enable HTTP/2 multiplexing, header compression, and connection persistence.
+
+- **⏱️ YouTube Traditional (`yt.py`) Keep-Alive:**
+  Added a background connection keeper to the standard YouTube service, dropping search pre-warming and query latencies from ~3.5 seconds to ~800ms.
+
+### 🐳 Optimized Docker Rebuild Flow (Zero Downtime)
+
+- **🚀 Rebuild Before Stop:**
+  Modified `ttbotdocker.sh` and `update.sh` to run `docker build` first while the bot containers are still online. The containers are stopped and recreated ONLY after the build completes, reducing user downtime from 30+ seconds to just 2-3 seconds.
+
+### 🔧 Permissions & Updater Polish
+
+- **🛡️ Ignore File Permission Drifts in Git:**
+  Added `git config core.fileMode false` dynamically in `update.sh`, `auto_updater.sh`, `install.sh`, and `install_git_clone.sh`. This ensures that recursive permission adjustments (`chmod`) performed by the installer or updater do not cause text or translation files (such as `docs/README.*.md`) to appear as unstaged mode changes (`new mode 100755`) on users' systems.
+
+---
+
+## 🆕 v2.4.5 — "Multi-Distribution Compatibility" *(06/13/2026)*
+
+### 🖥️ Shell Scripts & Package Manager Abstraction
+
+- **🌐 Dynamic Package Manager Detection:**
+  Added the `install_packages` function in `install_git_clone.sh` and custom package manager mapping in `install.sh` to dynamically handle system packages for Debian/Ubuntu (APT), Fedora/RHEL/CentOS (DNF/YUM), Arch Linux (Pacman), openSUSE (Zypper), and Alpine (APK).
+
+- **🐳 Docker Manager (`ttbotdocker.sh`) Generalization:**
+  Upgraded dependency checks to install `jq` on Zypper and APK systems, wrapped all `systemctl` calls to avoid crashing on systemd-less environments, and replaced hardcoded `apt-get` calls in `uninstall_all` with appropriate commands for the detected package manager.
+
+---
+
+## 🆕 v2.4.4 — "Stability & Search Optimization" *(06/13/2026)*
+
+### ⚡ Performance & Connectivity
+
+- **🎵 YouTube Music Keep-Alive (Lag Reduction):**
+  Added a background connection-warming thread in `ytm.py` that pings YouTube Music (`/generate_204`) every 15 seconds. This keeps the TCP/SSL connection warm, dropping latency by eliminating the TLS/SSL handshake penalty and lowering search times from ~1000ms to ~650ms.
+
+- **🔍 Thread-Safe YT Search Event Loop:**
+  Refactored `yt.py` to run async searches thread-safely on a persistent background event loop (`self._loop`) using `asyncio.run_coroutine_threadsafe(...).result()`. This resolves intermittent "Event loop is closed" errors during search execution.
+
+### 🐛 Stability & Crash Prevention
+
+- **🛡️ TaskProcessor Resilience:**
+  Wrapped task execution inside `task_processor.py` in a `try-except` block. If resolving/playing a track fails, the worker thread no longer crashes, keeping the commands queue and playback system fully operational.
+
+- **🚫 Unreleased / Private Video Loop Protection:**
+  Added a `self._fetch_failed` state in `track.py` to prevent the bot from entering infinite resolution retries when trying to play private, deleted, or unreleased Premiere videos (such as videos that haven't premiered yet).
+
+### 📋 Documentation & Metadata
+
+- **🌐 Multi-Language Documentation Restructuring:**
+  Moved `CHANGELOG.md` to `docs/CHANGELOG.md` and created 6 naturally translated versions of the README (`docs/README.en.md`, `docs/README.pt.md`, `docs/README.es.md`, `docs/README.es-419.md`, `docs/README.ar.md`, `docs/README.ru.md`).
+  Replaced the root `README.md` with a clean, H1-level language entrypoint gateway to select the preferred documentation translation.
+
+- **🏷️ Repository Metadata Update:**
+  Updated the repository description on GitHub to: *"An enhanced music streaming bot for TeamTalk Servers with native YouTube Music support and Docker orchestration."*
+
+---
+
+## 🆕 v2.4.3 — "Node.js v22 Upgrade" *(06/11/2026)*
+
+### 🐳 Docker & Dependencies Update
+
+- **🟢 Node.js Upgrade to v22:**
+  Upgraded the Node.js version installed in the Dockerfile from v20 to v22. This matches the new minimum JavaScript runtime requirements introduced in the latest `yt-dlp` (2026.06.09+), restoring YouTube signature solving (n-challenge) and resolving the "Requested format is not available" errors.
+
+---
+
+## 🆕 v2.4.2 — "Backup, Restore & Logs Cleanup" Update *(06/09/2026)*
+
+### 🐳 Docker Manager (`ttbotdocker.sh`) Extensions
+
+- **📦 Backup & Restore System (Portability):**
+  Added a portable configuration and cache backup/restore system. Backups are saved as compressed `.tar.gz` files containing all bots configurations, cookies, and cache in a dedicated `backups/` directory. Restoring dynamically cleans old environments, extracts configs, and reconstructs Docker containers on any host machine.
+  
+- **🧹 Log Cleanup Option:**
+  Added a quick-clear command that purges all `*.log` files within bot data folders in a single action, reclaiming storage space.
+
+- **⚙️ Menu Rearrangement:**
+  Reordered the "Manage Bots" submenu options: "Backup / Restore Bots" is now option **10**, "Clear All Bot Logs" is option **11**, and the "Return to Main Menu" (previously option 10) has been moved to option **12**.
+
+---
+
+## 🆕 v2.4.1 — "YTM Search Performance Fix" Update *(06/05/2026)*
+
+### ⚡ Connection Pre-warming & Startup Polish
+
+- **⏱️ Docker Container Startup Settling:**
+  Added an initial `5 seconds` delay to the background pre-warming threads in both YouTube (`yt.py`) and YouTube Music (`ytm.py`) services. This allows the Docker container network interfaces and internal DNS resolvers to fully initialize before starting requests.
+  
+- **🔄 Robust Pre-warming Retry Mechanism:**
+  Introduced a 3-attempt retry loop (with a 5-second interval) for the initial search request. This prevents the connection pools from failing permanently if the network takes a few extra seconds to boot.
+  
+- **📢 Improved Logging & Diagnostics:**
+  Warmed-up connection attempts are now explicitly tracked via logs. If the pre-warming fails all retries, it raises a warning/error in the logs instead of failing silently at debug level.
+
+- **⚙️ Default Service Config Update:**
+  Changed the default search and stream service from YouTube (`yt`) to YouTube Music (`ytm`) in `config.json` and `config_default.json` templates to provide the music-oriented experience by default.
+
+---
+
+## 🆕 v2.4.0 — "Universal Docker & Configurable Search" Update *(06/05/2026)*
+
+### 🖥️ Native ARM64 Compatibility & Code Cleanup
+
+- **🤖 Platform Auto-detection:**
+  Added system architecture auto-detection (`uname -m`) to `install_git_clone.sh`. The installer now automatically selects and downloads the appropriate TeamTalk library binary (`ttarm.zip` for ARM64 / ARM devices, or the standard `TeamTalk_DLL.zip` for x86_64 systems).
+
+- **🐳 Docker & Host Dependencies for ARM:**
+  Added the `libportaudio2` library dependency to `Dockerfile` and `install.sh`. This resolves the missing `libportaudio.so.2` runtime link errors when executing the ARM64 compiled TeamTalk SDK inside the Docker container or directly on the host system.
+
+- **⚙️ Conditional Package Installation (Minimal Footprint):**
+  Refactored dependency installation logic. The `libportaudio2` package is now conditionally installed ONLY when an ARM environment (`arm64`/`armhf`/`aarch64`) is detected. This ensures that `x86_64` environments remain minimal and untouched by ARM-specific runtime dependencies.
+
+- **🧹 Code Cleanup:**
+  Removed redundant Docker installation checks from `install_git_clone.sh`, delegating all environment dependencies verification and setup to `ttbotdocker.sh`.
+
+### 🔍 Configurable Search Results Default
+
+- **⚙️ Config-Driven Search Limits:**
+  Added the `search_results: int = 1` option to both YouTube (`yt`) and YouTube Music (`ytm`) configuration models in `models.py`, defaulted in `config.json` and `config_default.json`.
+  
+- **🔄 Dynamic Fallback in Services:**
+  Updated the base service search interface in `__init__.py` and implementations in `yt.py` and `ytm.py` to use the configuration-defined default search results limit (1) when the dynamic limit parameter is omitted.
+
+- **🔢 Search Results Mode Command Updates:**
+  Changed the default volatile search count for the `sr`/`slc`/`sl` commands from `5` to `1` in `__init__.py` and `user_commands.py`.
+
+### 🐳 Universal Docker Setup
+
+- **🚀 Support for Any Linux Distribution:**
+  Upgraded the Docker environment checks in `ttbotdocker.sh` to use the official universal `get.docker.com` script. This enables automatic setup of Docker Engine across all major distributions (Ubuntu, Debian, CentOS, RHEL, Fedora, Rocky, Alma, Raspbian).
+  
+- **🧹 Installer Script Cleanup:**
+  The downloaded `get-docker.sh` installer script is automatically deleted immediately after completion to keep the host directory clean.
+
+- **📦 Multi-Distribution dependency installer:**
+  Added fallback detection for package managers (`apt`, `dnf`, `yum`, `pacman`) to install the `jq` dependency dynamically on any supported Linux distribution.
+
+---
+
+## 🆕 v2.3.0 — "Dynamic SSL Trust" Update *(05/30/2026)*
+
+### 🔒 Dynamic SSL Trust & Peer Verification Bypass
+
+- **🛡️ Auto-fetching SSL Certificates:**
+  When connecting to an encrypted TeamTalk server (`encrypted: true`), the bot now automatically attempts to fetch the server's certificate dynamically over the network if a local CA certificate (`ttservercert.pem`) is not configured.
+
+- **✅ Local and Third-Party Server Support:**
+  The dynamically fetched certificate is temporarily trusted via OpenSSL/ACE SSL verification, allowing seamless encrypted connections to self-signed or third-party servers without manual certificate management (mirroring the Windows client behavior).
+
+- **🔧 Exposed `setEncryptionContext` in Wrapper:**
+  Exposed the C-level `TT_SetEncryptionContext` function inside `TeamTalkPy` wrapper as `setEncryptionContext`, enabling programmatic control over SSL contexts directly from Python.
+
+---
+
+## 🆕 v2.2.0 — "Link-Based Downloading" Update *(05/23/2026)*
+
+### 🔗 Link-Based Downloading Commands
+
+- **➕ `aad LINK` Command — Add Link:**
+  Adds a single media link/URL to the user's custom download list.
+
+- **➕ `ad LINK1 LINK2 ...` Command — Add Multiple Links:**
+  Adds multiple space-separated links to the download list at once.
+
+- **📜 `ld` Command — List Links:**
+  Displays a numbered list of all links currently in the user's download list.
+
+- **🗑️ `rd NUMBER_OR_LINK` Command — Remove Link:**
+  Removes a link from the download list by its index or URL string.
+
+- **📥 `ldd LINK` Command — Download Direct:**
+  Directly downloads a link asynchronously and uploads it to the TeamTalk channel.
+
+- **⚡ `ads` Command — Download and Upload List:**
+  Asynchronously downloads the user's link list. Prompts the user to choose between:
+  1. Downloading individually (Normal sequential upload)
+  2. Compressing all resolved tracks into a single ZIP archive and uploading it.
+
+- **💾 `adsc` Command — Toggle Local VPS Download Mode:**
+  Toggles local download mode for the `ads` command (volatile, resets on bot restart).
+  When active, downloads are saved locally to the VPS filesystem under `data/Downloads/music/` (Option 1) or `data/Downloads/zips/` (Option 2) instead of uploaded to TeamTalk, and are excluded from auto-deletion. Outputs a final translated status report.
+
+### 🌍 100% Localization & Translations
+
+- Fully translated and compiled all 27 new strings (commands, prompts, errors, success reports) across all 7 supported languages: Arabic (`ar`), Spanish (`es`), Hungarian (`hu`), Indonesian (`id`), Portuguese-Brazil (`pt_BR`), Russian (`ru`), and Turkish (`tr`).
+
+### 🐛 Core Uploader & Stability Fixes
+
+- **⏱️ Non-blocking Deletion Timer:**
+  Changed the file deletion timer in the uploader to run in a background daemon thread, preventing batch downloads from blocking.
+
+- **🛡️ Server Error Infinite Loop Fix:**
+  Fixed a major bug where unhandled server error codes (e.g. `FileAlreadyExists`) would lock the uploader in an infinite loop. It now breaks and handles errors gracefully.
+
+---
+
+## 🆕 v2.1.0 — "Smart Search & Docker Polish" Update *(05/21/2026)*
+
+### 🔍 New Bot Commands — Search Results Mode
+
+- **🔎 New `sr` Command — Search Results Mode Toggle:**
+  When active, the `p QUERY` command no longer plays immediately — it instead shows a **numbered list** of results. Use `sr on`, `sr off`, or just `sr` to toggle. Use `sc` to save the setting permanently to `config.json`.
+
+- **🎯 New `sl NUMBER` Command — Select from Search Results:**
+  After a search (with `sr` mode active), pick exactly which track to play by its number. Results are stored **per user** and cleared after selection for a clean experience.
+
+- **🔢 New `slc NUMBER` Command — Set Search Results Count:**
+  Controls how many results are displayed per search when `sr` mode is active. Defaults to **5**. Use `slc` alone to check the current count. Resets to 5 on bot restart.
+
+### 🐳 Docker Manager (`ttbotdocker.sh`) Improvements
+
+- **⏱️ File Deletion Timer — Create Bot:**
+  When creating a new bot, the script now reads `general.delete_uploaded_files_after` from `config.json` and offers to customize the value per bot. `0` = never delete. Supports any duration in seconds.
+
+- **⏱️ File Deletion Timer — Bulk Update:**
+  New **Option 6** in the Bulk Update Configuration menu allows changing `delete_uploaded_files_after` across bots without rebuilding. Option 7 ("Everything") now also includes the timer.
+
+- **🎯 Selective Bot Update — Bulk Update now targets specific bots:**
+  After choosing what to change, a new targeting menu appears:
+  - **Option 1:** Apply to ALL bots
+  - **Option 2:** Apply to a **single specific bot** (from a numbered list)
+  - **Option 3:** Apply to a **custom subset** (space-separated numbers)
+
+  Only selected bots are updated **and restarted** — other running bots are not touched.
+
+### 📚 Documentation
+
+- **📋 CHANGELOG extracted from README:**
+  Full version history moved to a dedicated [`CHANGELOG.md`](CHANGELOG.md) file. The README now shows only the latest update with a link to the full history.
+
+---
+
+## 🆕 v2.0.0 — "The Video" Update *(05/14/2026)*
+
+
+- **🎥 New `dlv` Command:** Download current track as **Video** (.mp4) directly to the channel.
+- **🧠 Smart Uploader 2.0:** Rewritten uploader module with intelligent file discovery. If the expected format isn't found, it automatically searches for alternative extensions (.mkv, .webm, etc.) before failing.
+- **🎞️ Forced MP4 Encoding:** Optimized video downloads to force MP4 merging, ensuring maximum compatibility with all media players.
+- **🌍 Global Video Support:** Full localization for the `dlv` command across all 7 supported languages (PT-BR, ES, HU, ID, RU, TR, AR).
+- **🛠️ Robustness Fix:** Resolved naming inconsistencies between `yt-dlp` output and uploader expectations.
+
+---
+
+## 🆕 v1.9.0 — "Performance & Cleanup" Update *(05/11/2026)*
+
+- **🧹 Deep Docker Cleanup:** Added a powerful cleanup option (Option 7) to `ttbotdocker.sh` that wipes stopped containers, unused images, build cache, and even host system logs (`journalctl`) to reclaim maximum disk space.
+- **📉 200MB+ Image Reduction:** Drastically reduced Docker image size (from ~1.6GB to ~1.4GB) by implementing:
+  - **`.dockerignore`:** Prevents bloating the image with `.git`, `bots/` folders, and other host-only files.
+  - **`--no-cache-dir`:** Optimized PIP installations to not store installer caches inside the container.
+- **🚀 Faster Builds:** The new `.dockerignore` prevents uploading unnecessary files to the Docker daemon, making the build process more efficient.
+- **📊 Real-time Disk Reclaim:** Cleanup process now includes `buildx prune` and system journal vacuuming for a truly "zero-clutter" environment.
+
+---
+
+## 🆕 v1.8.0 — "Universal Language" Update *(05/10/2026)*
+
+- **🌍 Arabic Support Added:** Full native support for Arabic (`ar`) language, including right-to-left (RTL) considerations for messages.
+- **💯 100% Localization:** Achieved 100% translation coverage across all supported languages (PT-BR, ES, HU, ID, RU, TR, AR).
+- **🆕 Queue & Playlist i18n:** All new features (Queue system, Playlist downloads) are now fully localized in every language.
+- **🧹 Systematic Audit:** Complete cleanup of all translation catalogs, resolving fuzzy strings and missing translations for a seamless global experience.
+
+---
+
+## 🆕 v1.7.0 — "Queue System" Update *(05/09/2026)*
+
+> A huge shoutout and massive credits to **ericoamico** for his incredible dedication and a full week of hard work in developing this amazing feature! All credits for the new queue system go to him.
+
+- **🗂️ Advanced Queue System:** You can now queue multiple tracks to play sequentially!
+- **➕ Add to Queue:** Use the `qa` command to search for a track and seamlessly add it to your queue.
+- **📜 View Queue:** Check what's playing next with the `ql` command to list all queued tracks.
+- **🗑️ Queue Management:** Use `qr [number]` to remove a specific song, or `qc` to clear the entire queue at once.
+- **⏭️ Smart Skip:** The new `qs` command skips the current track and instantly plays the next one from the queue.
+
+---
+
+## 🆕 v1.6.0 — "Playlist Power-Up" Update *(05/06/2026)*
+
+- **📦 New `dlp` Command:** Download entire YouTube/YouTube Music playlists and albums as organized ZIP archives directly to the TeamTalk channel.
+- **📂 Intelligent ZIP Structure:** Archives now wrap contents inside a subfolder named after the playlist/album, ensuring a clean extraction process.
+- **🧠 Smart Naming Engine:** Automatically distinguishes between Official Albums (`Album - Artist.zip`) and personal Playlists (`Playlist Name.zip`) based on link patterns and metadata.
+- **🕵️ PM Progress Reporting:** Live track-by-track download progress is sent via **Private Message (PV)** to keep the channel clean while keeping the user informed.
+- **📊 Active Status Check:** Typing `dlp` without arguments during an active download returns the current real-time status of the process.
+- **💾 Permanent Channel Storage:** Playlist ZIPs are stored permanently in the channel (not auto-deleted like `dl` files), building a community library.
+- **🌍 Full Localization (i18n):** All new features and status messages fully localized for Portuguese, Spanish, Turkish, and Russian.
+- **🛠️ Enhanced Metadata Scanning:** Aggressive multi-track scanning to extract correct artist and album names even from tricky direct links.
+
+---
+
+## 🆕 v1.5.0 — "Global Expansion" Update *(05/03/2026)*
+
+- **🌍 Full i18n Localization:** Completed full translation and standardization for PT-BR, Turkish (TR), Spanish (ES), and Indonesian (ID). All core commands and system messages are now fully localized.
+- **🎧 Studio Quality Audio (320kbps):** Upgraded audio streaming and transcoding to 320kbps MP3 by default for superior sound quality.
+- **🔄 Bulletproof Auto-Updater:** Major overhaul of the update system. Resolved infinite loops, fixed remote detection issues, and ensured updates work even with local file changes.
+- **⚡ Optimized Extraction:** Fixed YouTube signature errors and optimized ServiceManager for faster track loading and reduced latency.
+- **🎮 Polling Optimization:** Reduced auto-updater polling interval to 20 seconds for near-instant synchronization with the repository.
+- **🧹 Robust File Lifecycle:** Enhanced cleanup logic for temporary files and cookies, ensuring a zero-footprint operation after every request.
+
+---
+
+## 🆕 v1.3.1 — "Zero-Footprint" Update *(04/24/2026)*
+
+- **🛡️ Auto-Cleanup for Cookies:** When pasting cookies, the temporary file created in `/tmp` is now automatically deleted immediately after use, ensuring zero disk footprint and maximum privacy.
+- **🎮 Auto-Update Controller (`masc.sh`):** New dedicated menu (Main Menu option 6) to enable/disable automatic updates with systemd masking for 100% persistence.
+- **🍪 Cookie Paste Option:** Paste cookies directly into the terminal; the script auto-normalizes formatting (spaces to tabs) and sets correct file permissions.
+- **🛡️ Per-Request Cookie Lifecycle:** Each download or stream request now creates a unique, volatile copy of your `cookies.txt` in `/tmp`. These files are deleted immediately after use, ensuring 100% privacy and zero disk clutter.
+- **🐳 Dockerfile Optimization:** Updated `httpx` to version `0.28.1+` and resolved dependency conflicts, ensuring a stable and compatible network stack.
+- **🧵 Thread-Safe Authentication:** The temporary cookie mechanism is now fully thread-safe, allowing multiple bots to operate without file access conflicts.
+
+---
+
+## 🆕 v1.1 — "Reliability & Quality" Update *(04/23/2026)*
+
+- **🚀 Automated Background Updates:** Systemd service monitors GitHub every 20 seconds.
+- **🎵 High-Quality MP3:** Migrated to 192kbps MP3 by default.
+- **✅ Improved Permissions:** Refined upload logic for non-privileged bots.
+
+---
+
+## 🆕 YouTube Music Support *(03/19/2026)*
+
+- **YouTube Search API Integration:** Uses the YouTube Search API for fast and reliable music discovery
+- **Optimized Libraries:**
+  - YouTube uses `py-yt-search` — a fast and modern Python library for YouTube searches
+  - YouTube Music uses `ytmusicapi` — the official YouTube Music API library
+  - Both services use `yt-dlp` for audio extraction
+- **Performance Focus:** Designed to run with minimal bottlenecks, ensuring smooth playback and quick search results
+- **Unified Cookie System:** Both YouTube and YouTube Music use the same cookies configuration for authentication
+- **📦 Playlist & Album Downloads:** Full support for downloading entire collections via the `dlp` command with metadata-aware naming
+- **🕵️ Real-time PM Progress:** Stay updated on your downloads without cluttering the channel
+

@@ -1,6 +1,6 @@
 ---
 name: team_talk_bot_developman_skill
-description: "Specialized skill for creating, structuring, debugging, and maintaining Python bots for the TeamTalk 5 conferencing system using TeamTalkPy and TeamTalk5.dll. Covers project scaffolding, DLL placement, 64-bit architecture checks, event loop lifecycle, text commands, audio streaming, and server administration."
+description: "Specialized skill for designing, structuring, developing, debugging, and maintaining Python bots for the TeamTalk 5 conferencing system using TeamTalkPy and TeamTalk5.dll. Covers project scaffolding, DLL placement, 64-bit architecture checks, dynamic SDK API discovery from TeamTalk5.py, event loop lifecycle, text commands, studio media streaming (libmpv, WASAPI, yt-dlp, status bar lyrics), and enterprise server moderation (auto-jail, TTS, translation)."
 ---
 
 # TeamTalk 5 Bot Development Skill
@@ -17,176 +17,146 @@ You act as a senior real-time audio and VoIP bot engineer with deep mastery of t
 ### Situation & Scope
 Activate this skill whenever the user wants to:
 - Scaffold a new TeamTalk 5 bot project from scratch.
-- Add features (command handlers, soundboard, audio streaming, auto-moderation) to an existing bot.
+- Add features (command handlers, soundboard, audio streaming, auto-moderation, TTS) to an existing bot.
 - Diagnose missing runtime DLLs, bitness mismatches (32-bit vs 64-bit), or event loop hangs.
-- Stream media files (`.mp3`, `.wav`) or inject raw PCM audio blocks into a TeamTalk channel.
-- Manage users, accounts, channels, and server properties via bot automation.
+- Stream media files (`.mp3`, `.wav`), YouTube audio, or inject raw PCM audio blocks into a TeamTalk channel.
+- Synchronize live subtitles or lyrics onto the bot's status message (`szStatusMsg`).
+- Manage users, accounts, channels, jails, and server properties via bot automation.
+- Inspect or update to a newly released TeamTalk SDK version.
 
-### Mandatory Constraints
-1. **Bitness Matching**: `TeamTalk5.dll` is 64-bit (`x64`). The running Python interpreter **MUST** be 64-bit.
-2. **Windows DLL Directory**: Python 3.8+ on Windows does not search current directories for DLLs by default. Always ensure `os.add_dll_directory()` is called on the directory containing `TeamTalk5.dll` before importing `TeamTalk5`.
-3. **String Encoding (`ttstr`)**: Always wrap string inputs and unpack string attributes with `ttstr()` to guarantee cross-platform string handling (UTF-16 on Windows, UTF-8 on POSIX).
-4. **Message Length (`TT_STRLEN = 512`)**: Single text message packets cannot exceed 512 characters. For long output, always split with `buildTextMessage()` and assemble with `rebuildTextMessage()`.
-5. **Clean Shutdown**: Always implement signal trapping (`KeyboardInterrupt`) to call `doLogout()`, `disconnect()`, and `closeTeamTalk()` to avoid ghost sessions on the server.
-
----
-
-## 2. Standard Bot Project Structure
-
-Every TeamTalk 5 bot project must follow this self-contained layout:
-
-```text
-my_teamtalk_bot/
-├── bot.py                  # Main entrypoint subclassing TeamTalk
-├── config.json             # Server host, ports, bot credentials, and settings
-├── requirements.txt        # Optional packages (core ctypes requires no extra pip packages)
-├── .gitignore              # Ignores __pycache__, .env, *.log
-├── README.md               # Quickstart guide
-├── sounds/                 # Local audio files for streaming (.wav, .mp3)
-└── teamtalkpy/             # Bundled TeamTalk 5 Python wrapper & runtime DLL
-    ├── __init__.py
-    ├── TeamTalk5.py
-    └── TeamTalk5.dll       # 64-bit native engine (Win64)
-```
-
-For full directory and platform setup details, read [Project Structure Guide](references/project-structure.md).
+### Mandatory Constraints & Architectural Principles
+1. **Zero Modification on `TeamTalk5.py`**:
+   The `TeamTalk5.py` file is the stock, official SDK wrapper distributed by BearWare.dk. **NEVER modify, patch, or alter `TeamTalk5.py`**. Keep it 100% stock. All DLL loading configurations, path resolutions, and custom wrappers must be implemented strictly within your bot's entrypoint or application code.
+2. **Dynamic SDK Discovery Mandate**:
+   Do not rely solely on static memory for C-API methods, structs, or events. When developing, debugging, or adapting to new SDK releases, **ALWAYS inspect `TeamTalk5.py` directly** in `teamtalkpy/TeamTalk5.py` or `resources/teamtalkpy/TeamTalk5.py` to verify signatures, event mappings, and struct fields.
+3. **Bitness Matching**:
+   `TeamTalk5.dll` is 64-bit (`x64`). The running Python interpreter **MUST** be 64-bit (`AMD64`). Mixing 32-bit Python with a 64-bit DLL will fail with `[WinError 193]`.
+4. **Safe Windows DLL Directory Loading**:
+   Python 3.8+ on Windows does not search current directories for DLLs by default. Always ensure `os.add_dll_directory()` is called on directories containing `TeamTalk5.dll` in your bot launcher *before* importing `TeamTalk5`.
+5. **String Encoding (`ttstr`)**:
+   Always wrap string inputs and unpack string attributes with `ttstr()` to guarantee cross-platform string handling (UTF-16 on Windows, UTF-8 on POSIX).
+6. **Message Length (`TT_STRLEN = 512`)**:
+   Single text message packets cannot exceed 512 characters. For long output, always split with `buildTextMessage()` and assemble with `rebuildTextMessage()`.
+7. **Clean Termination**:
+   Always implement signal trapping (`KeyboardInterrupt` / SIGINT) to call `doLogout()`, `disconnect()`, and `closeTeamTalk()` to avoid ghost sessions on the server.
 
 ---
 
-## 3. Automation Scripts & Project Diagnostics
+## 2. Dynamic SDK Discovery: Inspecting `TeamTalk5.py` Directly
 
-The skill bundles an automated utility script at [`scripts/setup_teamtalk_bot.py`](scripts/setup_teamtalk_bot.py). AI agents should leverage this script for instant project scaffolding and diagnostics:
+Whenever you need to verify API details or adapt to a newly updated SDK version, read `TeamTalk5.py` using these standard patterns:
 
-### 3.1 Initializing a New Bot Project
-Copies bundled `TeamTalkPy` and `TeamTalk5.dll`, scaffolds `bot.py`, `config.json`, and requirements:
-```bash
-python scripts/setup_teamtalk_bot.py init --target-dir <path_to_project> --bot-name <BotName>
-```
+1. **Client Events & Callbacks**:
+   - Inspect `class ClientEvent` to view all event integer constants (`CLIENTEVENT_*`).
+   - Inspect `def runEventLoop(self, nTimeoutMS)` inside `class TeamTalk` to see the exact mapping between `msg.nClientEvent` and the callback method invoked (e.g. `CLIENTEVENT_USER_TEXTMESSAGE` -> `self.onCmdUserTextMessage(textmessage)`).
+2. **Server Commands (`do*`) & Local Queries (`get*`)**:
+   - Search for `def do` in `class TeamTalk`: All commands that send packets to the server (`doLogin`, `doJoinChannelByID`, `doTextMessage`, `doKickUser`, `doBanUser`, `doChangeStatus`, etc.).
+   - Search for `def get` in `class TeamTalk`: Local state and cache queries (`getUser`, `getChannel`, `getChannelUsers`, `getMyUserID`, `getMyUserRights`, `getServerProperties`, etc.).
+3. **Data Structs & Field Names**:
+   - Search for `class <Name>(Structure):` (e.g. `class User(Structure):`, `class TextMessage(Structure):`, `class Channel(Structure):`).
+   - Read `_fields_ = [...]` to check exact field names, data types, and array dimensions (e.g., `szNickname`, `szStatusMsg`, `nChannelID`).
+4. **Permissions & States**:
+   - Search for `class UserRight:` for bitwise permission flags (`USERRIGHT_TRANSMIT_VOICE`, `USERRIGHT_KICK_USERS`, etc.).
+   - Search for `class UserState:` for client states (`USERSTATE_VOICE`, `USERSTATE_MUTE_VOICE`, etc.).
 
-### 3.2 Diagnosing an Existing Bot Project
-Inspects Python bitness, verifies `TeamTalk5.py` and `TeamTalk5.dll`, tests SDK initialization:
-```bash
-python scripts/setup_teamtalk_bot.py check --target-dir <path_to_project>
-```
-
-### 3.3 Auto-Repairing Missing Project Files
-Automatically copies missing DLLs or wrapper modules from bundled resources:
-```bash
-python scripts/setup_teamtalk_bot.py fix --target-dir <path_to_project>
-```
-
-### 3.4 Downloading & Pruning Fresh SDK from BearWare
-Downloads official SDK (`v5.23a`), extracts DLL and wrapper, and cleans up ~100MB of unneeded demo files:
-```bash
-python scripts/setup_teamtalk_bot.py download-sdk --platform win64
-```
+For comprehensive details, read [Exhaustive TeamTalkPy API Reference](references/teamtalkpy-api.md).
 
 ---
 
-## 4. Implementation Workflow & Recipes
+## 3. Proven Architectural Blueprints
 
-### Step 1: Subclass `TeamTalk` & Safe DLL Import
+The skill bundles three architectural tiers in `resources/templates/`:
+
+### 3.1 Starter Blueprints (`basic_bot.py`, `soundboard_bot.py`, `admin_bot.py`)
+- Single-file bots for straightforward command processing, simple sound playback, or basic operator tasks.
+- Directly implement callbacks: `onConnectSuccess`, `onCmdMyselfLoggedIn`, `onCmdUserTextMessage`.
+
+### 3.2 High-Fidelity Studio Media Streaming Engine (`TTMediaBot`)
+*Located in `resources/templates/TTMediaBot/`*
+- **C-API `libmpv` Integration**: Direct binding via `mpv.py` and `mpv.dll` with native Windows Audio Session API (`ao="wasapi"`).
+- **Direct `yt-dlp` Media Pipeline**: Native YouTube stream extraction without external background daemons.
+- **Real-Time Synchronized Lyrics/Subtitles**: Streams subtitles directly to the bot's TeamTalk status line (`szStatusMsg` via `doChangeStatus`).
+- **Hybrid Song Recognition**: 3-tier fallback engine (YouTube Chapters -> Shazam API -> Google Speech Voice AI).
+- **Audio DSP Suite**: Real-time pitch shifting (-12 to +12 semitones via Rubber Band v3) and automated silence trimming.
+- **Process Priority Scheduling**: Elevates Windows priority (`HIGH_PRIORITY_CLASS`) to prevent audio stuttering during CPU load.
+
+### 3.3 Enterprise Server Moderation & Community Suite (`TTUtilities`)
+*Located in `resources/templates/TTUtilities/`*
+- **Direct OOP Subclassing**: `class TTUtilities(TeamTalk)` inheriting all 118 native C-API methods cleanly.
+- **Smart Jail & Flood Protection**: Automatically isolates offending users into a restricted jail channel, with penalty escalation for bypass attempts.
+- **Multi-Engine Text-to-Speech (TTS)**: Synthesizes voice messages using Edge TTS / msspeech / gTTS into the channel.
+- **Real-Time Translation**: Automated channel and private message translation via `deep_translator`.
+- **Dynamic Private Channels**: Automatically creates temporary, password-protected rooms for 2-user private conversations.
+- **INI Configuration & Localization**: Human-readable `config.ini` management paired with `gettext` multi-language catalogs.
+
+For architectural breakdowns, diagrams, and implementation guides, read [Advanced Bot Architectures](references/advanced-bot-architectures.md).
+
+---
+
+## 4. Automation Tooling: `setup_teamtalk_bot.py`
+
+The skill provides an automated CLI utility at [`scripts/setup_teamtalk_bot.py`](scripts/setup_teamtalk_bot.py):
+
+| Command | Action |
+|---|---|
+| `python scripts/setup_teamtalk_bot.py init -t <dir> -n <Name>` | Scaffolds a new project with stock `TeamTalk5.py`, 64-bit DLL, config, and `bot.py`. |
+| `python scripts/setup_teamtalk_bot.py check -t <dir>` | Diagnoses bitness, presence of files, tests SDK import, and discovers API count. |
+| `python scripts/setup_teamtalk_bot.py fix -t <dir>` | Auto-repairs missing runtime files from bundled resources without altering SDK code. |
+| `python scripts/setup_teamtalk_bot.py list-templates` | Displays details about starter and production templates available in `resources/templates/`. |
+| `python scripts/setup_teamtalk_bot.py download-sdk -p win64` | Downloads fresh official SDK from BearWare.dk and extracts essential runtime assets. |
+
+---
+
+## 5. Safe DLL Loading & Bot Entrypoint Boilerplate
+
+Place this standard initialization block in your bot launcher (`bot.py`):
+
 ```python
 import os
 import sys
 
-# Ensure DLL path is recognized in Python 3.8+ on Windows
+# 1. Resolve runtime directories
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 TEAMTALKPY_DIR = os.path.join(CURRENT_DIR, "teamtalkpy")
+TEAMTALK_DLL_DIR = os.path.join(CURRENT_DIR, "TeamTalk_DLL")
+
+# 2. Add module import paths
 for d in [CURRENT_DIR, TEAMTALKPY_DIR]:
-    if os.path.isdir(d):
-        if d not in sys.path:
-            sys.path.insert(0, d)
-        if sys.platform == "win32" and sys.version_info >= (3, 8):
+    if os.path.isdir(d) and d not in sys.path:
+        sys.path.insert(0, d)
+
+# 3. Add DLL search paths on Windows Python 3.8+ (WITHOUT modifying TeamTalk5.py)
+if sys.platform == "win32" and sys.version_info >= (3, 8):
+    for d in [CURRENT_DIR, TEAMTALKPY_DIR, TEAMTALK_DLL_DIR]:
+        if os.path.isdir(d):
             try:
                 os.add_dll_directory(d)
             except OSError:
                 pass
 
+# 4. Import unmodified stock SDK wrapper
 from TeamTalk5 import TeamTalk, TextMessage, TextMsgType, ttstr, UserAccount, Channel
 ```
 
-### Step 2: Implement Key Event Callbacks
-```python
-class MyBot(TeamTalk):
-    def onConnectSuccess(self):
-        # Triggered upon network connection
-        self.doLogin(ttstr("BotNickname"), ttstr("username"), ttstr("password"), ttstr("BotClient"))
-
-    def onCmdMyselfLoggedIn(self, userid: int, useraccount: UserAccount):
-        # Triggered after authentication
-        target_channel = self.getRootChannelID()
-        self.doJoinChannelByID(target_channel, ttstr(""))
-
-    def onCmdUserTextMessage(self, msg: TextMessage):
-        # Triggered when text message arrives
-        if msg.nFromUserID == self.getMyUserID():
-            return  # Ignore messages from self
-        
-        text = ttstr(msg.szMessage).strip()
-        if text == "!ping":
-            self.reply_text("pong!", msg)
-
-    def reply_text(self, reply_content: str, orig_msg: TextMessage):
-        out = TextMessage()
-        out.nMsgType = orig_msg.nMsgType
-        out.nChannelID = orig_msg.nChannelID
-        out.nToUserID = orig_msg.nFromUserID
-        out.szMessage = ttstr(reply_content)
-        self.doTextMessage(out)
-```
-
-### Step 3: Event Loop Execution
-```python
-bot = MyBot()
-bot.connect(ttstr("127.0.0.1"), 10333, 10333)
-
-try:
-    while True:
-        bot.runEventLoop(100)  # Wait up to 100ms for events
-except KeyboardInterrupt:
-    bot.doLogout()
-    bot.disconnect()
-    bot.closeTeamTalk()
-```
-
 ---
 
-## 5. Media & Audio Streaming
+## 6. Complete Documentation Directory
 
-- **Stream Local Audio File**:
-  ```python
-  # Stream MP3 or WAV directly into current channel
-  bot.startStreamingMediaFileToChannel(ttstr("sounds/track.mp3"), None)
-  
-  # Stop playback
-  bot.stopStreamingMediaFileToChannel()
-  ```
-- **Microphone Transmission**:
-  ```python
-  bot.enableVoiceTransmission(True)   # Transmit voice
-  bot.enableVoiceTransmission(False)  # Mute voice
-  ```
-
-For detailed audio architectures, Opus codecs, and raw PCM block injection, read [Audio & Media Streaming Guide](references/audio-streaming.md).
-
----
-
-## 6. Complete References & Documentation
-
-Before authoring code or diagnosing complex bot bugs, explore the specialized reference docs:
-- **[Exhaustive TeamTalkPy API Reference](references/teamtalkpy-api.md)**: Documentation of all 93 classes/enums/structures, 118 `TeamTalk` methods, and 55 `ClientEvent` constants.
-- **[Project Structure & DLL Guide](references/project-structure.md)**: Windows/Linux paths, bitness, and configuration standards.
+Before implementing or debugging, consult these specialized guides:
+- **[TeamTalkPy Exhaustive API Reference & Dynamic Discovery](references/teamtalkpy-api.md)**: Full catalog of classes, enums, structs, methods, events, and step-by-step instructions on parsing `TeamTalk5.py`.
+- **[Advanced Bot Architectures & Blueprints](references/advanced-bot-architectures.md)**: In-depth analysis of `TTMediaBot` (MPV, WASAPI, lyrics, DSP) and `TTUtilities` (Auto-jail, TTS, translation, i18n).
+- **[Project Structure & Runtime Guide](references/project-structure.md)**: File layout standards, stock SDK placement rules, bitness verification, and multi-platform notes.
 - **[Audio & Media Streaming Guide](references/audio-streaming.md)**: Codecs, file streaming, voice activation, and raw PCM blocks.
-- **[Bot Implementation Recipes](references/bot-recipes.md)**: Ready-to-use code for Echo bots, Soundboard bots, Auto-moderators, and Linux daemon services.
+- **[Bot Implementation Recipes](references/bot-recipes.md)**: Tested recipes for Echo bots, Soundboards, Gatekeepers, Long messages, Linux daemons, Live Lyrics sync, Auto-Jail, and TTS.
 
 ---
 
 ## 7. Verification Checklist
 
-After implementing or editing a TeamTalk bot, verify:
-- [ ] Run `python scripts/setup_teamtalk_bot.py check --target-dir <bot_dir>` to verify all runtime files.
-- [ ] Check Python interpreter bitness with `python -c "import struct; print(struct.calcsize('P')*8)"` -> must report 64.
-- [ ] Verify `TeamTalk5.getVersion()` executes and returns SDK version string.
-- [ ] Ensure `ttstr()` is used for all string arguments and properties.
-- [ ] Verify `KeyboardInterrupt` / SIGINT calls `closeTeamTalk()` cleanly.
+After authoring or updating any TeamTalk bot code:
+- [ ] Verify that `TeamTalk5.py` remains 100% stock and unmodified.
+- [ ] Run `python scripts/setup_teamtalk_bot.py check -t <bot_dir>` to verify runtime files and DLL imports.
+- [ ] Confirm Python interpreter bitness matches the native DLL (`python -c "import struct; print(struct.calcsize('P')*8)"` -> 64).
+- [ ] Test `TeamTalk5.getVersion()` returns the active SDK version.
+- [ ] Ensure all string parameters and attributes use `ttstr()`.
+- [ ] Verify that SIGINT / `KeyboardInterrupt` triggers clean logout and `closeTeamTalk()`.

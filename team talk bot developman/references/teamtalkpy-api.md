@@ -8,6 +8,14 @@ This document provides a comprehensive, exhaustive reference for all classes, st
 
 `TeamTalkPy` (`TeamTalk5.py`) is an object-oriented Python wrapper built over `ctypes` that interfaces directly with the native C/C++ TeamTalk 5 Client library (`TeamTalk5.dll` on Windows, `libTeamTalk5.so` on Linux, `libTeamTalk5.dylib` on macOS).
 
+> [!IMPORTANT]
+> **Zero Modification Principle on `TeamTalk5.py`**:
+> `TeamTalk5.py` is the official SDK wrapper distributed by BearWare.dk. **NEVER modify, patch, or edit `TeamTalk5.py`**. Keep it 100% stock. All DLL loading configurations, path resolutions, and custom wrappers must be implemented strictly within your bot's entrypoint or application code.
+
+> [!TIP]
+> **Dynamic SDK Discovery Rule**:
+> While this document catalogs known APIs, BearWare periodically releases new SDK versions with additional flags, events, or methods. Whenever you develop a bot, diagnose an issue, or upgrade the SDK, **ALWAYS inspect `TeamTalk5.py` directly** in `teamtalkpy/TeamTalk5.py` or `resources/teamtalkpy/TeamTalk5.py`. Section 6 below details how to parse it.
+
 ### Key Execution Models
 There are two primary paradigms for using `TeamTalk`:
 1. **Event Callback Model (`runEventLoop`)** - *Recommended*: Subclass `TeamTalk` and override `on*` callback methods (e.g. `onConnectSuccess`, `onCmdUserTextMessage`). Call `bot.runEventLoop(timeout_ms)` in your main loop.
@@ -281,3 +289,55 @@ class ServerProperties(Structure):
 - `doNewUserAccount(lpUserAccount: UserAccount) -> int`: Creates/updates server account.
 - `doDeleteUserAccount(szUsername) -> int`: Deletes user account from server.
 - `doListBans(nChannelID: int, nIndex: int, nCount: int) -> int`: Queries server ban list.
+
+---
+
+## 6. Dynamic SDK Discovery: Reading `TeamTalk5.py` Directly
+
+When developing a new bot or adapting to a newly released TeamTalk SDK version, always inspect `TeamTalk5.py` directly. The file is structured cleanly into predictable sections:
+
+### 6.1 Finding Events and Their Respective Callback Methods
+1. Locate `class ClientEvent` to inspect all event integer constants:
+   ```python
+   # Search for: class ClientEvent
+   CLIENTEVENT_CON_SUCCESS = 1
+   CLIENTEVENT_USER_TEXTMESSAGE = 17
+   ...
+   ```
+2. Locate `def runEventLoop(self, nTimeoutMS)` inside `class TeamTalk`:
+   Examine the `if/elif` cascade inside `runEventLoop()`. It maps every `msg.nClientEvent` directly to its corresponding callback name:
+   ```python
+   # If msg.nClientEvent == ClientEvent.CLIENTEVENT_USER_TEXTMESSAGE:
+   #     self.onCmdUserTextMessage(textmessage)
+   ```
+   This gives you the exact callback method signature and parameter names to override in your bot class.
+
+### 6.2 Finding Server Actions (`do*`) and State Queries (`get*`)
+1. Search for `def do` inside `class TeamTalk`:
+   Shows all commands that transmit packets to the server (`doLogin`, `doJoinChannelByID`, `doTextMessage`, `doKickUser`, `doBanUser`, `doChangeStatus`, etc.). Check argument types and default values.
+2. Search for `def get` inside `class TeamTalk`:
+   Shows all local cache lookups and queries (`getUser`, `getChannel`, `getChannelUsers`, `getMyUserID`, `getMyUserRights`, `getServerProperties`, etc.).
+3. Search for `def init` or `def set`:
+   Shows hardware and license initializers (`initSoundInputDevice`, `initSoundOutputDevice`, `setLicense`).
+
+### 6.3 Inspecting Struct Field Definitions (`_fields_`)
+All data structures in `TeamTalk5.py` inherit from `ctypes.Structure`. To discover available attributes on an object (e.g., `user`, `channel`, `msg`):
+1. Search for `class <StructName>(Structure):` (e.g. `class User(Structure):`, `class TextMessage(Structure):`).
+2. Read the `_fields_ = [...]` tuple list. For example, in `class User`:
+   ```python
+   _fields_ = [
+       ("nUserID", INT32),
+       ("szNickname", TTCHAR * TT_STRLEN),
+       ("uUserState", UINT32),
+       ("uUserRights", UINT32),
+       ("nChannelID", INT32),
+       ...
+   ]
+   ```
+   This tells you the exact field name, whether it is an integer or string (`szNickname`), and whether it needs `ttstr()` unpacking.
+
+### 6.4 Inspecting User Rights, States, and Error Codes
+- **Permissions**: Search for `class UserRight:` to inspect all bitwise permission flags (e.g., `USERRIGHT_TRANSMIT_VOICE`, `USERRIGHT_MODIFY_CHANNELS`, `USERRIGHT_KICK_USERS`).
+- **User States**: Search for `class UserState:` (e.g., `USERSTATE_VOICE`, `USERSTATE_MUTE_VOICE`, `USERSTATE_STREAM_MEDIAFILE`).
+- **Client Errors**: Search for `class ClientError:` to decode command failure codes returned in `onCmdError(cmdId, clienterrormsg)`.
+

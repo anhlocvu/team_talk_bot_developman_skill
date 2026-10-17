@@ -237,3 +237,107 @@ Enable and start:
 sudo systemctl daemon-reload
 sudo systemctl enable --now teamtalk-bot
 ```
+
+---
+
+## Recipe 6: Live Status & Lyrics Sync (`TTMediaBot` Pattern)
+
+Updates the bot's TeamTalk status line (`szStatusMsg`) dynamically during audio playback to display currently playing track titles or synchronized lyrics:
+
+```python
+import time
+from TeamTalk5 import TeamTalk, ttstr
+
+class LyricStatusBot(TeamTalk):
+    def __init__(self):
+        super().__init__()
+        self.last_status = ""
+
+    def update_lyrics_line(self, lyric_text: str):
+        """Pushes current lyric or music title to bot's status bar."""
+        clean_text = lyric_text.strip()
+        if clean_text and clean_text != self.last_status:
+            # TT_STRLEN is 512, clamp text safely
+            truncated = clean_text[:250]
+            # doChangeStatus(nStatusMode, szStatusMsg)
+            # nStatusMode: 0 (Available), 1 (Away), etc.
+            self.doChangeStatus(0, ttstr(truncated))
+            self.last_status = clean_text
+
+    def clear_status(self):
+        self.doChangeStatus(0, ttstr(""))
+        self.last_status = ""
+```
+
+---
+
+## Recipe 7: Auto-Jail & Flood Protection (`TTUtilities` Pattern)
+
+Isolates offending users who violate chat rules or nickname policies into a jail channel, and punishes jail escape attempts:
+
+```python
+import time
+from TeamTalk5 import TeamTalk, TextMessage, ttstr, User
+
+class ModerationBot(TeamTalk):
+    def __init__(self, jail_channel_id: int):
+        super().__init__()
+        self.jail_channel_id = jail_channel_id
+        # {userid: {"jail_until": float, "attempts": int}}
+        self.jailed_users = {}
+
+    def jail_user(self, userid: int, duration_sec: int = 180):
+        self.jailed_users[userid] = {
+            "jail_until": time.time() + duration_sec,
+            "attempts": 0
+        }
+        self.doMoveUser(userid, self.jail_channel_id)
+
+    def onCmdUserJoinedChannel(self, user: User):
+        uid = user.nUserID
+        now = time.time()
+        if uid in self.jailed_users:
+            record = self.jailed_users[uid]
+            if now < record["jail_until"]:
+                if user.nChannelID != self.jail_channel_id:
+                    record["attempts"] += 1
+                    if record["attempts"] >= 3:
+                        # Escalated punishment: ban user
+                        self.doBanUser(uid, 0)
+                        del self.jailed_users[uid]
+                    else:
+                        # Drag back to jail immediately
+                        self.doMoveUser(uid, self.jail_channel_id)
+            else:
+                # Jail sentence expired
+                del self.jailed_users[uid]
+```
+
+---
+
+## Recipe 8: Text-to-Speech (TTS) Voice Announcer (`TTUtilities` Pattern)
+
+Synthesizes announcements with Edge-TTS or gTTS into a temporary WAV/MP3 file and streams it into the channel:
+
+```python
+import os
+import tempfile
+from gtts import gTTS
+from TeamTalk5 import TeamTalk, ttstr
+
+class TTSAnnouncerBot(TeamTalk):
+    def speak(self, text: str, lang: str = "en"):
+        """Synthesize text to speech and stream to current channel."""
+        with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as tf:
+            temp_path = tf.name
+        
+        try:
+            tts = gTTS(text=text, lang=lang, slow=False)
+            tts.save(temp_path)
+            # Stream file directly into channel
+            self.startStreamingMediaFileToChannel(ttstr(temp_path), None)
+            # Note: Clean up temp_path after playback completes (e.g. via timer or event)
+        except Exception as e:
+            print(f"TTS Error: {e}")
+```
+

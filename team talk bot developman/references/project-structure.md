@@ -4,28 +4,57 @@ This guide explains how to properly structure, configure, and maintain a Python 
 
 ---
 
-## 1. Recommended Project Layout
+## 1. Project Layouts: Basic vs. Modular Architectures
 
-A robust TeamTalk 5 bot project should follow this clean layout:
+### 1.1 Basic Single-File Bot Layout
+Ideal for lightweight utility bots, echo bots, and soundboards:
 
 ```text
 my_teamtalk_bot/
 ├── bot.py                  # Main bot entrypoint (event loop, commands, logic)
 ├── config.json             # Configuration (host, ports, credentials, channel, prefix)
 ├── requirements.txt        # Python dependencies (minimal; ctypes is standard library)
-├── .env.example            # Environment variables template (optional)
 ├── .gitignore              # Standard gitignore (logs, pycache, .env)
 ├── README.md               # Setup and usage instructions
 ├── sounds/                 # Audio files for streaming (.mp3, .wav)
 │   └── welcome.wav
+├── TeamTalk5.dll           # Placed in root for direct os.getcwd() SDK resolution
 └── teamtalkpy/             # Self-contained TeamTalk 5 runtime
     ├── __init__.py         # Package marker
-    ├── TeamTalk5.py        # Object-oriented ctypes wrapper
+    ├── TeamTalk5.py        # Stock, unmodified official SDK wrapper
     └── TeamTalk5.dll       # Native C++ SDK client engine (64-bit on Windows)
 ```
 
-> [!TIP]
-> Placing `TeamTalk5.dll` directly inside the `teamtalkpy/` folder (or at project root) ensures that the bot is completely self-contained and portable across machines without requiring global SDK installation.
+### 1.2 Enterprise Modular Bot Layout (e.g. `TTMediaBot` & `TTUtilities`)
+Ideal for media streaming engines, complex moderation systems, and multi-language bots:
+
+```text
+my_enterprise_bot/
+├── entrypoint.py           # Launcher (UTF-8 console setup, safe DLL loading, priority)
+├── config.json (or .ini)   # Rich configuration file
+├── requirements.txt        # Dependencies (yt-dlp, mpv, gTTS, requests, etc.)
+├── TeamTalk5.dll           # 64-bit native DLL in working directory
+├── mpv.dll                 # (Optional) MPV C-API library for studio streaming
+├── TeamTalk_DLL/           # Alternative SDK location recognized by stock TeamTalk5.py
+│   └── TeamTalk5.dll
+├── teamtalkpy/             # Stock TeamTalk SDK wrapper (read-only)
+│   ├── __init__.py
+│   └── TeamTalk5.py
+├── bot/                    # Modular application package
+│   ├── __init__.py         # Bot class definition (subclassing TeamTalk)
+│   ├── commands/           # Modular command handlers
+│   ├── player/             # Audio playback and DSP controllers
+│   ├── moderation/         # Jail, blacklist, flood protection
+│   ├── services/           # Speech synthesis, translation, web APIs
+│   └── utils.py            # Process priority, string helpers, signal traps
+└── locales/                # Internationalization translation catalogs (.mo, .po)
+    ├── en/LC_MESSAGES/
+    └── vi/LC_MESSAGES/
+```
+
+> [!IMPORTANT]
+> **Stock SDK Integrity Rule**:
+> Never modify `TeamTalk5.py` to fix DLL loading paths. Always keep it identical to the official BearWare distribution. By placing `TeamTalk5.dll` in the current working directory (`os.getcwd()`), or inside a sibling `TeamTalk_DLL/` folder, or by invoking `os.add_dll_directory()` in the entrypoint script, `TeamTalk5.py` loads successfully without altering a single line of SDK code.
 
 ---
 

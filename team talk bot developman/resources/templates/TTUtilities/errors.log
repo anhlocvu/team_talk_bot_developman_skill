@@ -1,0 +1,11 @@
+2025-02-17 23:20:06,440 - ERROR - An error occured: [Errno 12] Not enough space
+Traceback (most recent call last):
+  File "D:\tt bot\TTUtilities\windows\TTUtilities.py", line 2171, in <module>
+    bot.runEventLoop()
+  File "D:\tt bot\TTUtilities\windows\TeamTalk5.py", line 1279, in runEventLoop
+    self.onConnectFailed()
+  File "D:\tt bot\TTUtilities\windows\TTUtilities.py", line 194, in onConnectFailed
+    self.reconnect()
+  File "D:\tt bot\TTUtilities\windows\TTUtilities.py", line 202, in reconnect
+    os.execv(sys.executable, [sys.executable] + sys.argv)
+OSError: [Errno 12] Not enough space
